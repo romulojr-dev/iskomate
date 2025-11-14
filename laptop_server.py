@@ -12,7 +12,7 @@ app.config['SECRET_KEY'] = 'laptop-server-key'
 socketio_server = SocketIO(app, cors_allowed_origins="*")
 
 # Load YOLO model (use your trained engagement detection model)
-model = YOLO(r"C:\Users\John Gwen Isaac\Downloads\best.pt")
+model = YOLO("C:\Users\John Gwen Isaac\Downloads\best.pt")
 
 # Store connected Raspberry Pis
 connected_raspis = {}
