@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'session_store.dart' as session_store;
 import 'active_session.dart';
 import 'overlay_logo.dart';
-
-// Replace local color constants with a single import:
 import 'theme.dart';
 
 class SessionScreen extends StatefulWidget {
@@ -16,7 +14,6 @@ class SessionScreen extends StatefulWidget {
 class _SessionScreenState extends State<SessionScreen> {
   final store = session_store.SessionStore();
 
-  // Utility to set system UI colors
   void _setSystemUIOverlay() {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       systemNavigationBarIconBrightness: Brightness.light,
@@ -131,6 +128,7 @@ class _SessionScreenState extends State<SessionScreen> {
                               builder: (context) => ActiveSessionScreen(
                                 sessionName: session.name,
                                 deviceName: session.deviceName,
+                                deviceIp: session.deviceIp,
                               ),
                             ),
                           );
@@ -179,7 +177,10 @@ class SessionTile extends StatelessWidget {
             decoration: BoxDecoration(
               color: isHighlighted ? kAccentColor : Colors.transparent,
               borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: isHighlighted ? kAccentColor : Colors.white24, width: 1.5),
+              border: Border.all(
+                color: isHighlighted ? kAccentColor : Colors.white24,
+                width: 1.5,
+              ),
             ),
             child: Row(
               children: [
@@ -187,20 +188,28 @@ class SessionTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(sessionName,
-                          style: TextStyle(
-                            color: isHighlighted ? Colors.white : Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          )),
+                      Text(
+                        sessionName,
+                        style: TextStyle(
+                          color: isHighlighted ? Colors.white : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                       const SizedBox(height: 6),
-                      Text(sessionDate, style: const TextStyle(color: Colors.white70)),
+                      Text(
+                        sessionDate,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
                     ],
                   ),
                 ),
                 if (onDelete != null)
                   IconButton(
-                    icon: Icon(Icons.delete, color: isHighlighted ? Colors.white : Colors.white70),
+                    icon: Icon(
+                      Icons.delete,
+                      color: isHighlighted ? Colors.white : Colors.white70,
+                    ),
                     onPressed: onDelete,
                     tooltip: 'Delete session',
                   ),

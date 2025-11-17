@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:http/http.dart' as http;
-import 'package:flutter_vlc_player/flutter_vlc_player.dart';
-import 'theme.dart'; // <-- use your app colors
+import 'package:web_socket_channel/web_socket_channel.dart';
+// 1. ADD THIS IMPORT
+import 'package:uuid/uuid.dart'; 
+import 'theme.dart';
 
 class VideoStreamPage extends StatefulWidget {
   const VideoStreamPage({super.key});
@@ -12,11 +14,15 @@ class VideoStreamPage extends StatefulWidget {
 }
 
 class _VideoStreamPageState extends State<VideoStreamPage> {
-  final String _whepUrl = 'http://100.74.50.99:8889/cam/whep';
+  final String _webSocketUrl = 'ws://100.74.50.99:8765';
   final RTCVideoRenderer _renderer = RTCVideoRenderer();
   RTCPeerConnection? _pc;
+  WebSocketChannel? _channel;
   bool _isLoading = true;
   bool _hasError = false;
+  
+  // 2. GENERATE UNIQUE ID
+  final String _myId = const Uuid().v4(); 
 
   @override
   void initState() {
@@ -27,7 +33,7 @@ class _VideoStreamPageState extends State<VideoStreamPage> {
   Future<void> _initialize() async {
     try {
       await _renderer.initialize();
-      await _connect();
+      await _connectWebRTC();
     } catch (e) {
       debugPrint('Init error: $e');
       setState(() {
@@ -37,23 +43,15 @@ class _VideoStreamPageState extends State<VideoStreamPage> {
     }
   }
 
-  @override
-  void dispose() {
-    _renderer.dispose();
-    _pc?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _connect() async {
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
-
+  Future<void> _connectWebRTC() async {
     try {
-      _pc = await createPeerConnection({
-        'iceServers': [],
+      setState(() {
+        _isLoading = true;
+        _hasError = false;
       });
+
+      _channel = WebSocketChannel.connect(Uri.parse(_webSocketUrl));
+      _pc = await createPeerConnection({'iceServers': []});
 
       _pc!.onTrack = (RTCTrackEvent event) {
         if (event.track.kind == 'video' && event.streams.isNotEmpty) {
@@ -74,21 +72,52 @@ class _VideoStreamPageState extends State<VideoStreamPage> {
       final offer = await _pc!.createOffer();
       await _pc!.setLocalDescription(offer);
 
-      final response = await http.post(
-        Uri.parse(_whepUrl),
-        headers: {'Content-Type': 'application/sdp'},
-        body: offer.sdp,
-      );
+      debugPrint('Sending offer via WebSocket');
+      // 3. SEND ID WITH OFFER
+      _channel!.sink.add(jsonEncode({
+        'id': _myId, 
+        'type': 'offer',
+        'sdp': offer.sdp,
+      }));
 
-      if (response.statusCode != 201) {
-        throw Exception('WHEP responded ${response.statusCode}');
-      }
+      _channel!.stream.listen((message) async {
+        try {
+          final data = jsonDecode(message);
+          
+          // 4. IGNORE MESSAGES NOT FOR US
+          if (data['id'] != _myId) return;
 
-      final answerSdp = response.body;
-      final answer = RTCSessionDescription(answerSdp, 'answer');
-      await _pc!.setRemoteDescription(answer);
+          if (data['type'] == 'answer') {
+            debugPrint('Received answer');
+            final answer = RTCSessionDescription(data['sdp'], 'answer');
+            await _pc!.setRemoteDescription(answer);
+          } else if (data['type'] == 'ice_candidate') {
+            debugPrint('Received ICE candidate');
+            final candidate = RTCIceCandidate(
+              data['candidate'],
+              data['sdpMLineIndex'],
+              data['sdpMid'],
+            );
+            await _pc!.addCandidate(candidate);
+          }
+        } catch (e) {
+          debugPrint('WebSocket message error: $e');
+        }
+      });
+
+      _pc!.onIceCandidate = (RTCIceCandidate candidate) {
+        debugPrint('Sending ICE candidate via WebSocket');
+        // 5. SEND ID WITH CANDIDATES
+        _channel!.sink.add(jsonEncode({
+          'id': _myId,
+          'type': 'ice_candidate',
+          'candidate': candidate.candidate,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+          'sdpMid': candidate.sdpMid,
+        }));
+      };
     } catch (e) {
-      debugPrint('Connect error: $e');
+      debugPrint('WebRTC connect error: $e');
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -99,7 +128,16 @@ class _VideoStreamPageState extends State<VideoStreamPage> {
   }
 
   @override
+  void dispose() {
+    _renderer.dispose();
+    _pc?.dispose();
+    _channel?.sink.close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // (This build method is fine, keep it as is)
     return Scaffold(
       appBar: AppBar(title: const Text('Pi Video Stream')),
       body: Center(
@@ -114,7 +152,7 @@ class _VideoStreamPageState extends State<VideoStreamPage> {
                       const Text('Stream error'),
                       const SizedBox(height: 8),
                       ElevatedButton(
-                        onPressed: _connect,
+                        onPressed: _connectWebRTC,
                         style: ElevatedButton.styleFrom(backgroundColor: kAccentColor),
                         child: const Text('Retry'),
                       ),
@@ -129,21 +167,21 @@ class _VideoStreamPageState extends State<VideoStreamPage> {
                     : const Text('Video stream not available')),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _connect,
+        onPressed: _connectWebRTC,
         child: const Icon(Icons.refresh),
       ),
     );
   }
 }
 
-// Small pop-up preview - NOW FIXED
+// WebSocket-based popup dialog for snapshots
 class VideoPreviewDialog extends StatefulWidget {
-  final String streamUrl; // <-- Renamed from whepUrl
+  final String webSocketUrl;
   final double width;
   final double height;
 
   const VideoPreviewDialog({
-    required this.streamUrl, // <-- Renamed
+    required this.webSocketUrl,
     this.width = 340,
     this.height = 220,
     super.key,
@@ -154,38 +192,114 @@ class VideoPreviewDialog extends StatefulWidget {
 }
 
 class _VideoPreviewDialogState extends State<VideoPreviewDialog> {
-  late final VlcPlayerController _vlcController;
-  bool _isInitialized = false;
+  final RTCVideoRenderer _renderer = RTCVideoRenderer();
+  RTCPeerConnection? _pc;
+  WebSocketChannel? _channel;
+  bool _isLoading = true;
   bool _hasError = false;
+  
+  // 6. GENERATE ID FOR DIALOG
+  final String _myId = const Uuid().v4();
 
   @override
   void initState() {
     super.initState();
-    _vlcController = VlcPlayerController.network(
-      widget.streamUrl,
-      hwAcc: HwAcc.full,
-      autoPlay: true,
-    );
-    _initialize();
+    _initRendererAndConnect();
   }
 
-  Future<void> _initialize() async {
+  Future<void> _initRendererAndConnect() async {
     try {
-      debugPrint('VLC: Starting initialization...');
-      await _vlcController.initialize();
-      debugPrint('VLC: Initialization complete');
+      await _renderer.initialize();
+      await _connect();
+    } catch (e) {
+      debugPrint('Preview init error: $e');
       if (mounted) {
         setState(() {
-          _isInitialized = true;
-          _hasError = false;
+          _hasError = true;
+          _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _connect() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(widget.webSocketUrl));
+      _pc = await createPeerConnection({'iceServers': []});
+
+      _pc!.onTrack = (RTCTrackEvent event) {
+        if (event.track.kind == 'video' && event.streams.isNotEmpty) {
+          _renderer.srcObject = event.streams[0];
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        }
+      };
+
+      await _pc!.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+
+      final offer = await _pc!.createOffer();
+      await _pc!.setLocalDescription(offer);
+
+      debugPrint('Popup: Sending offer via WebSocket');
+      // 7. SEND ID
+      _channel!.sink.add(jsonEncode({
+        'id': _myId,
+        'type': 'offer',
+        'sdp': offer.sdp,
+      }));
+
+      _channel!.stream.listen((message) async {
+        try {
+          final data = jsonDecode(message);
+          
+          // 8. IGNORE MESSAGES NOT FOR US
+          if (data['id'] != _myId) return;
+
+          if (data['type'] == 'answer') {
+            debugPrint('Popup: Received answer');
+            final answer = RTCSessionDescription(data['sdp'], 'answer');
+            await _pc!.setRemoteDescription(answer);
+          } else if (data['type'] == 'ice_candidate') {
+            final candidate = RTCIceCandidate(
+              data['candidate'],
+              data['sdpMLineIndex'],
+              data['sdpMid'],
+            );
+            await _pc!.addCandidate(candidate);
+          }
+        } catch (e) {
+          debugPrint('Popup WebSocket message error: $e');
+        }
+      });
+
+      _pc!.onIceCandidate = (RTCIceCandidate candidate) {
+        // 9. SEND ID
+        _channel!.sink.add(jsonEncode({
+          'id': _myId, 
+          'type': 'ice_candidate',
+          'candidate': candidate.candidate,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+          'sdpMid': candidate.sdpMid,
+        }));
+      };
     } catch (e) {
-      debugPrint('VLC Init Error: $e');
+      debugPrint('Popup connect error: $e');
       if (mounted) {
         setState(() {
-          _isInitialized = false;
           _hasError = true;
+          _isLoading = false;
         });
       }
     }
@@ -193,13 +307,15 @@ class _VideoPreviewDialogState extends State<VideoPreviewDialog> {
 
   @override
   void dispose() {
-    _vlcController.stop();
-    _vlcController.dispose();
+    _renderer.dispose();
+    _pc?.dispose();
+    _channel?.sink.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+     // (This build method is fine, keep it as is)
     return Dialog(
       backgroundColor: kBackgroundColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -209,7 +325,6 @@ class _VideoPreviewDialogState extends State<VideoPreviewDialog> {
         height: widget.height + 64,
         child: Column(
           children: [
-            // Header
             Container(
               height: 48,
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -232,8 +347,6 @@ class _VideoPreviewDialogState extends State<VideoPreviewDialog> {
                 ],
               ),
             ),
-
-            // Body: VLC player
             Expanded(
               child: Container(
                 margin: const EdgeInsets.all(12),
@@ -250,20 +363,22 @@ class _VideoPreviewDialogState extends State<VideoPreviewDialog> {
                             padding: const EdgeInsets.all(12.0),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
-                              children: [
+                              children: const [
                                 Icon(Icons.error, color: Colors.redAccent, size: 28),
                                 SizedBox(height: 8),
                                 Text('Stream error', style: TextStyle(color: Colors.white)),
                               ],
                             ),
                           )
-                        : !_isInitialized
+                        : _isLoading
                             ? const CircularProgressIndicator()
-                            : VlcPlayer(
-                                controller: _vlcController,
-                                aspectRatio: widget.width / widget.height,
-                                placeholder: const Center(child: CircularProgressIndicator()),
-                              ),
+                            : (_renderer.renderVideo
+                                ? RTCVideoView(
+                                    _renderer,
+                                    mirror: false,
+                                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                                  )
+                                : const Text('Video not available', style: TextStyle(color: Colors.white))),
                   ),
                 ),
               ),

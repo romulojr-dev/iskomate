@@ -12,12 +12,6 @@ import 'overlay_logo.dart';
 import 'theme.dart'; // <-- add this import to get colors from theme
 import 'provision_screen.dart';
 
-// --- ADD YOUR STATIC TAILSCALE IP HERE ---
-const String piTailscaleIp = '100.74.50.99';
-// --- THIS IS THE FIX ---
-const String streamUrl = 'rtsp://$piTailscaleIp:8554/mystream?rtsp_transport=tcp';
-// --- END OF FIX ---
-
 class SessionSetupScreen extends StatefulWidget {
   final String? selectedDeviceName;
 
@@ -71,7 +65,6 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      // Removed AppBar — content now lives in a Stack so the list button can overlay
       body: SafeArea(
         child: Stack(
           children: [
@@ -136,11 +129,14 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
 
                           // create session object
                           final id = DateTime.now().millisecondsSinceEpoch.toString();
+                          
+                          const String currentPiIp = '100.74.50.99';
+                          
                           final session = session_store.Session(
                             id: id,
                             name: sessionName,
                             deviceName: deviceName, // The Wi-Fi name
-                            deviceIp: piTailscaleIp, // The static Tailscale IP
+                            deviceIp: currentPiIp, // The static Tailscale IP
                             createdAt: DateTime.now().millisecondsSinceEpoch,
                           );
 
@@ -187,6 +183,7 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                     const SizedBox(height: 20),
 
                     // Solo / Classroom Toggle
+                    // ... (no changes in this large widget) ...
                     LayoutBuilder(builder: (context, constraints) {
                       final totalW = constraints.maxWidth;
                       final innerW = (totalW - 6).clamp(0.0, totalW);
@@ -290,16 +287,19 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
 
                     // Camera Preview Button (open small popup)
                     GestureDetector(
+                      // <-- MODIFIED THIS ONTAP
                       onTap: () {
+                        // This now calls the VideoPreviewDialog from your video.dart file
                         showDialog(
                           context: context,
-                          builder: (context) => VideoPreviewDialog(
-                            streamUrl: 'http://100.74.50.99:8889/cam/whep',
+                          builder: (context) => const VideoPreviewDialog(
+                            webSocketUrl: 'ws://100.74.50.99:8765',
                             width: 340,
                             height: 220,
                           ),
                         );
                       },
+                      // <-- END OF MODIFICATION
                       child: Container(
                         height: 55,
                         decoration: BoxDecoration(
@@ -333,6 +333,8 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
               ),
             ),
 
+            // ... (rest of the file is unchanged) ...
+            
             // Overlay: three-line list button in top-right
             Positioned(
               top: 12,
@@ -368,7 +370,7 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                 minimum: const EdgeInsets.all(12),
                 child: SizedBox(
                   width: 48,
-                  height: 48,
+                  height: 100,
                   child: IconButton(
                     padding: EdgeInsets.zero,
                     splashRadius: 24,
@@ -410,55 +412,6 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
         ),
       ),
       floatingActionButton: const OverlayLogoButton(),
-    );
-  }
-}
-
-class SnapshotCaptureDialog extends StatelessWidget {
-  final String snapshotUrl;
-
-  const SnapshotCaptureDialog({super.key, required this.snapshotUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        width: 300,
-        height: 200,
-        decoration: BoxDecoration(
-          color: kBackgroundColor,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: kAccentColor, width: 2),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Capture Snapshot',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kAccentColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              onPressed: () async {
-                // Capture snapshot logic here
-                Navigator.of(context).pop();
-              },
-              child: const Text('Capture'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

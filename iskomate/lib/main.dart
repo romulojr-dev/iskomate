@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart'; // <-- ADD THIS IMPORT
 import 'package:shared_preferences/shared_preferences.dart';
 import 'provision_screen.dart';
 import 'start_session.dart';

@@ -9,8 +9,6 @@
 #include <cloud_firestore/cloud_firestore_plugin_c_api.h>
 #include <firebase_core/firebase_core_plugin_c_api.h>
 #include <flutter_webrtc/flutter_web_r_t_c_plugin.h>
-#include <media_kit_video/media_kit_video_plugin_c_api.h>
-#include <volume_controller/volume_controller_plugin_c_api.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   CloudFirestorePluginCApiRegisterWithRegistrar(
@@ -19,8 +17,4 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("FirebaseCorePluginCApi"));
   FlutterWebRTCPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterWebRTCPlugin"));
-  MediaKitVideoPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
-  VolumeControllerPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("VolumeControllerPluginCApi"));
 }

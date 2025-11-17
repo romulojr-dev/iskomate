@@ -1,9 +1,6 @@
 // active_session.dart
-import 'dart:async'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import 'theme.dart';
 
@@ -34,10 +31,8 @@ class ActiveSessionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     _setSystemUIOverlay();
 
-    // --- THIS IS THE FIX ---
-    // Build the dynamic stream URL with the TCP flag
-    final String streamUrl = 'rtsp://$deviceIp:8554/mystream?rtsp_transport=tcp';
-    // --- END OF FIX ---
+    // <-- REMOVED the unused 'streamUrl' variable
+    // We don't need it on this screen.
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -240,153 +235,5 @@ class _ActiveSessionGraphPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// --- WIDGET REBUILT TO USE THE CORRECT URL ---
-
-class VideoPopupScreen extends StatefulWidget {
-  final String streamUrl;
-  const VideoPopupScreen({required this.streamUrl, super.key});
-  @override
-  State<VideoPopupScreen> createState() => _VideoPopupScreenState();
-}
-
-class _VideoPopupScreenState extends State<VideoPopupScreen> {
-  
-  // Create player *without* configuration
-  late final Player player = Player(); 
-  late final VideoController controller = VideoController(player);
-
-  bool _isLoading = true; // Start in loading state
-  bool _hasError = false;
-  
-  StreamSubscription? _bufferingSubscription;
-  StreamSubscription? _errorSubscription;
-  StreamSubscription? _playingSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    
-    _bufferingSubscription = player.stream.buffering.listen((isBuffering) {
-      if (mounted && !_hasError) {
-        setState(() {
-          _isLoading = isBuffering;
-        });
-      }
-    });
-
-    _errorSubscription = player.stream.error.listen((error) {
-      print("MediaKit error: $error");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-        });
-      }
-    });
-
-    _playingSubscription = player.stream.playing.listen((isPlaying) {
-      if (mounted && isPlaying && !_hasError) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    });
-
-    // --- *** THIS IS THE FIX *** ---
-    // The player will now open the URL with the TCP flag in it
-    // We are no longer trying to set the parameter in the code.
-    player.open(
-      Media(widget.streamUrl), // <-- This now contains "?rtsp_transport=tcp"
-      play: true,
-    );
-  }
-  
-  @override
-  void dispose() {
-    _bufferingSubscription?.cancel();
-    _errorSubscription?.cancel();
-    _playingSubscription?.cancel();
-    player.dispose();
-    super.dispose();
-  }
-
-  // Helper widget for clarity
-  Widget _buildVideoWidget() {
-    if (_hasError) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(8.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, color: kLightGreyColor, size: 40),
-              SizedBox(height: 8),
-              Text(
-                'Error: Could not load video stream.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(kAccentColor)));
-    }
-
-    // If not loading and not error, show video
-    return Video(controller: controller);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 600),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1F1F1F),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: kWhiteColor.withOpacity(0.06)),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // header: title + close
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Live Video',
-                    style: TextStyle(color: kWhiteColor, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  color: kWhiteColor,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            AspectRatio(
-              aspectRatio: 16 / 9, 
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  color: Colors.black,
-                  child: _buildVideoWidget(), // Use the helper
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // small info / theme colored bar
-            Container(height: 6, width: double.infinity, decoration: BoxDecoration(color: kAccentColor, borderRadius: BorderRadius.circular(4))),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// --- ALL VIDEOPOPUP WIDGETS REMOVED ---
+// They were for a different video player and are not needed here.
