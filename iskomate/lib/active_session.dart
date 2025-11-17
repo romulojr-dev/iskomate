@@ -1,24 +1,52 @@
-// active_session.dart
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'theme.dart'; // Assuming this contains your kAccentColor, kBackgroundColor, etc.
 
-import 'theme.dart';
-
-class ActiveSessionScreen extends StatelessWidget {
+class ActiveSessionScreen extends StatefulWidget {
   final String sessionName;
   final String deviceName;
-  final String deviceIp;
+  final String deviceIp; // This is the Laptop IP
   final bool isSolo;
-  final int engagedPercent;
 
   const ActiveSessionScreen({
     super.key,
     required this.sessionName,
     required this.deviceName,
-    this.deviceIp = '',
+    required this.deviceIp,
     this.isSolo = true,
-    this.engagedPercent = 92,
   });
+
+  @override
+  State<ActiveSessionScreen> createState() => _ActiveSessionScreenState();
+}
+
+class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
+  // Socket & Data
+  WebSocketChannel? _channel;
+  
+  // Current values for text display
+  double _currentEngagedVal = 0.0;
+  
+  // History lists for the Graph
+  final List<double> _engagedHistory = []; 
+  final List<double> _notEngagedHistory = [];
+  
+  final int _maxGraphPoints = 50; // Keep 50 points (approx 5 seconds at 0.1s interval)
+
+  // Timer for duration
+  Timer? _timer;
+  int _secondsElapsed = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+    _connectToDataStream();
+    _setSystemUIOverlay();
+  }
 
   void _setSystemUIOverlay() {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -27,12 +55,83 @@ class ActiveSessionScreen extends StatelessWidget {
     ));
   }
 
+  // --- 1. CONNECT TO LAPTOP SERVER ---
+  void _connectToDataStream() {
+    // Updated Port to 8766 to match your laptop_server.py
+    final url = 'ws://${widget.deviceIp}:8766'; 
+    debugPrint("Connecting to AI Analysis Stream: $url");
+    
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(url));
+      _channel!.stream.listen((message) {
+        try {
+          final data = jsonDecode(message);
+
+          // Check status from server
+          if (data['status'] == 'ACTIVE') {
+            // Parse values (server sends floats like 85.5)
+            double engaged = (data['engaged_percent'] as num).toDouble();
+            double notEngaged = (data['not_engaged_percent'] as num).toDouble();
+            
+            _updateGraph(engaged, notEngaged);
+          } 
+          // You can handle "WAITING_FOR_VIDEO" here if you want specific UI logic
+        } catch (e) {
+          debugPrint("JSON Parse Error: $e");
+        }
+      }, onError: (err) {
+        debugPrint("Data Stream Error: $err");
+      });
+    } catch (e) {
+      debugPrint("Connection failed: $e");
+    }
+  }
+
+  // --- 2. UPDATE GRAPH LOGIC ---
+  void _updateGraph(double engaged, double notEngaged) {
+    if (!mounted) return;
+    setState(() {
+      _currentEngagedVal = engaged;
+
+      _engagedHistory.add(engaged);
+      _notEngagedHistory.add(notEngaged);
+
+      // Keep list size fixed so graph scrolls
+      if (_engagedHistory.length > _maxGraphPoints) {
+        _engagedHistory.removeAt(0);
+        _notEngagedHistory.removeAt(0);
+      }
+    });
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _secondsElapsed++;
+        });
+      }
+    });
+  }
+
+  String _formatDuration(int seconds) {
+    final h = (seconds ~/ 3600).toString().padLeft(2, '0');
+    final m = ((seconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return "$h:$m:$s";
+  }
+
+  @override
+  void dispose() {
+    _channel?.sink.close();
+    _timer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    _setSystemUIOverlay();
-
-    // <-- REMOVED the unused 'streamUrl' variable
-    // We don't need it on this screen.
+    // Round the current value for the big display
+    int displayPercentage = _currentEngagedVal.round();
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
@@ -44,7 +143,7 @@ class ActiveSessionScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         centerTitle: true,
-        title: Text(sessionName, style: const TextStyle(color: kWhiteColor, fontWeight: FontWeight.bold)),
+        title: Text(widget.sessionName, style: const TextStyle(color: kWhiteColor, fontWeight: FontWeight.bold)),
       ),
       body: SafeArea(
         child: Padding(
@@ -52,8 +151,10 @@ class ActiveSessionScreen extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 18),
+              
+              // --- DYNAMIC PERCENTAGE (ENGAGED) ---
               Text(
-                '${engagedPercent}%',
+                '$displayPercentage%',
                 style: const TextStyle(
                   color: kWhiteColor,
                   fontSize: 48,
@@ -61,12 +162,12 @@ class ActiveSessionScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text('ENGAGED', style: TextStyle(color: kWhiteColor, fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text('ENGAGEMENT LEVEL', style: TextStyle(color: kWhiteColor, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('Duration: 00:00:00', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
+              Text('Duration: ${_formatDuration(_secondsElapsed)}', style: const TextStyle(color: kLightGreyColor, fontSize: 12)),
               const SizedBox(height: 16),
 
-              // Graph container
+              // --- DUAL LINE GRAPH ---
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -75,76 +176,33 @@ class ActiveSessionScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 12.0, bottom: 8.0, left: 12.0, right: 8.0),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Graph drawing area
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 8.0, bottom: 8.0),
-                                  child: CustomPaint(
-                                    size: Size.infinite,
-                                    painter: _ActiveSessionGraphPainter(),
-                                  ),
-                                ),
-                              ),
-
-                              // Percentage column
-                              SizedBox(
-                                width: 54,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: const [
-                                    Text('100%', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                                    Text('75%', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                                    Text('50%', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                                    Text('25%', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // X-axis labels
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4.0, right: 54.0, top: 6.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: const [
-                              Text('Hour', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                              Text('Hour', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                              Text('Hour', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                              Text('Hour', style: TextStyle(color: kLightGreyColor, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    padding: const EdgeInsets.all(16.0),
+                    child: CustomPaint(
+                      size: Size.infinite,
+                      painter: MultiLineGraphPainter(
+                        engagedData: _engagedHistory,
+                        notEngagedData: _notEngagedHistory,
+                        max: 100,
+                      ),
                     ),
                   ),
                 ),
               ),
 
               const SizedBox(height: 12),
-
-              // Legend only (eye button removed)
+              
+              // --- UPDATED LEGEND ---
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
+                  // Engaged = Accent Color
                   _LegendItem(color: kAccentColor, text: 'ENGAGED'),
                   SizedBox(width: 18),
+                  // Not Engaged = White (or Red, depending on preference)
                   _LegendItem(color: kWhiteColor, text: 'NOT ENGAGED'),
                 ],
               ),
-
               const SizedBox(height: 18),
-
-              // End Session Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -153,13 +211,10 @@ class ActiveSessionScreen extends StatelessWidget {
                     backgroundColor: kAccentColor,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text('END SESSION', style: TextStyle(color: kWhiteColor, fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
-
               const SizedBox(height: 12),
             ],
           ),
@@ -181,11 +236,7 @@ class _LegendItem extends StatelessWidget {
         Container(
           width: 16,
           height: 10,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-            border: Border.all(color: kWhiteColor.withOpacity(0.12)),
-          ),
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 8),
         Text(text, style: const TextStyle(color: kWhiteColor, fontSize: 12, fontWeight: FontWeight.bold)),
@@ -194,46 +245,76 @@ class _LegendItem extends StatelessWidget {
   }
 }
 
-class _ActiveSessionGraphPainter extends CustomPainter {
+// --- UPDATED PAINTER FOR TWO LINES ---
+class MultiLineGraphPainter extends CustomPainter {
+  final List<double> engagedData;
+  final List<double> notEngagedData;
+  final double max;
+
+  MultiLineGraphPainter({
+    required this.engagedData,
+    required this.notEngagedData,
+    required this.max,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    final engagedPaint = Paint()
-      ..color = kAccentColor
-      ..strokeWidth = 3.0
+    // 1. Draw Grid
+    final gridPaint = Paint()
+      ..color = kWhiteColor.withOpacity(0.1)
       ..style = PaintingStyle.stroke
-      ..strokeJoin = StrokeJoin.round;
+      ..strokeWidth = 1.0;
 
-    final notEngagedPaint = Paint()
-      ..color = kWhiteColor
-      ..strokeWidth = 3.0
-      ..style = PaintingStyle.stroke
-      ..strokeJoin = StrokeJoin.round;
-
-    final gridPaint = Paint()..color = kWhiteColor.withOpacity(0.06);
     for (int i = 0; i <= 4; i++) {
       final y = size.height * (i / 4);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    final engagedPath = Path()
-      ..moveTo(0, size.height * 0.75)
-      ..cubicTo(size.width * 0.12, size.height * 0.6, size.width * 0.28, size.height * 0.9, size.width * 0.40, size.height * 0.6)
-      ..cubicTo(size.width * 0.52, size.height * 0.45, size.width * 0.68, size.height * 0.7, size.width * 0.82, size.height * 0.35)
-      ..lineTo(size.width, size.height * 0.2);
+    if (engagedData.isEmpty) return;
 
-    final notEngagedPath = Path()
-      ..moveTo(0, size.height * 0.6)
-      ..cubicTo(size.width * 0.12, size.height * 0.3, size.width * 0.28, size.height * 0.45, size.width * 0.40, size.height * 0.5)
-      ..cubicTo(size.width * 0.52, size.height * 0.55, size.width * 0.68, size.height * 0.35, size.width * 0.82, size.height * 0.7)
-      ..lineTo(size.width, size.height * 0.8);
+    // 2. Draw Engaged Line (Accent Color)
+    final engagedPaint = Paint()
+      ..color = kAccentColor
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
-    canvas.drawPath(notEngagedPath, notEngagedPaint);
-    canvas.drawPath(engagedPath, engagedPaint);
+    // 3. Draw Not Engaged Line (White Color - to match Legend)
+    final notEngagedPaint = Paint()
+      ..color = kWhiteColor.withOpacity(0.8)
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final stepX = size.width / (engagedData.length > 1 ? engagedData.length - 1 : 1);
+
+    // Helper to draw a path from a list of data
+    void drawPath(List<double> data, Paint paint) {
+      final path = Path();
+      for (int i = 0; i < data.length; i++) {
+        final value = (data[i] / max).clamp(0.0, 1.0);
+        final y = size.height - (value * size.height);
+        final x = i * stepX;
+
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    // Draw both paths
+    drawPath(notEngagedData, notEngagedPaint); // Draw "Not Engaged" behind
+    drawPath(engagedData, engagedPaint);       // Draw "Engaged" on top
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant MultiLineGraphPainter oldDelegate) {
+    return oldDelegate.engagedData != engagedData || 
+           oldDelegate.notEngagedData != notEngagedData;
+  }
 }
-
-// --- ALL VIDEOPOPUP WIDGETS REMOVED ---
-// They were for a different video player and are not needed here.
