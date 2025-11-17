@@ -14,7 +14,7 @@ class VideoStreamPage extends StatefulWidget {
 }
 
 class _VideoStreamPageState extends State<VideoStreamPage> {
-  final String _webSocketUrl = 'ws://100.74.50.99:8765';
+  final String _webSocketUrl = 'ws://100.105.15.120:9090';
   final RTCVideoRenderer _renderer = RTCVideoRenderer();
   RTCPeerConnection? _pc;
   WebSocketChannel? _channel;
