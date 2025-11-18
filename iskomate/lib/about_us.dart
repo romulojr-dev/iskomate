@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// Define the custom dark background and accent color
 const Color kBackgroundColor = Color(0xFF232323);
-const Color kAccentColor = Color(0xFFB71C1C); // A deep maroon/red
+const Color kAccentColor = Color(0xFFB71C1C);
 const Color kWhiteColor = Colors.white;
 
 class AboutUsScreen extends StatelessWidget {
   const AboutUsScreen({super.key});
 
-  // Utility to set system UI colors
   void _setSystemUIOverlay() {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -19,16 +17,16 @@ class AboutUsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    _setSystemUIOverlay(); // Apply the system UI styling
+    _setSystemUIOverlay();
 
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: SingleChildScrollView(
-        child: SafeArea(
+      body: SafeArea(
+        child: Center(
           child: Column(
+            mainAxisSize: MainAxisSize.min, // <-- This prevents overflow!
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
-              // Logo above title
               Padding(
                 padding: const EdgeInsets.only(top: 24.0, bottom: 12.0),
                 child: Center(
@@ -44,8 +42,6 @@ class AboutUsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-
-              // Title centered
               const Text(
                 'About Us',
                 textAlign: TextAlign.center,
@@ -64,11 +60,10 @@ class AboutUsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // Main Text Content (centered)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28.0),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: const [
                     Text(
                       'At IskoMate, we believe that every student\'s focus and well-being matter. Born from a vision to support learners in their academic journey, IskoMate uses intelligent technology to monitor engagement and promote a more attentive, meaningful learning experience.',
@@ -92,15 +87,13 @@ class AboutUsScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 40),
-
-              // Scrolling Image Placeholders (PageView)
+              const SizedBox(height: 24), // <-- Move PageView up here
               SizedBox(
                 height: 200,
                 child: PageView.builder(
                   controller: PageController(
                     viewportFraction: 0.7,
-                    initialPage: 1000, // loopable
+                    initialPage: 1000,
                   ),
                   itemBuilder: (context, index) {
                     final realIndex = index % 4;
@@ -111,7 +104,8 @@ class AboutUsScreen extends StatelessWidget {
                   },
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 24), // <-- Reduce this if needed
+              // Remove or reduce the last SizedBox(height: 40),
             ],
           ),
         ),
@@ -120,7 +114,6 @@ class AboutUsScreen extends StatelessWidget {
   }
 }
 
-// --- Custom Widget for the Image Placeholder Cards ---
 class PlaceholderCard extends StatelessWidget {
   final int index;
 
