@@ -34,6 +34,9 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   void initState() {
     super.initState();
     _setSystemUIOverlay();
+    _sessionNameController.addListener(() {
+      setState(() {}); // Rebuild when text changes
+    });
   }
 
   @override
@@ -244,6 +247,8 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final isClassOrOnline = _selectedMode == SessionMode.classroom || _selectedMode == SessionMode.online;
+    final isSoloNameEmpty = _selectedMode == SessionMode.solo && _sessionNameController.text.trim().isEmpty;
+
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
@@ -326,11 +331,11 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           textStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                         ),
-                        onPressed: (isClassOrOnline && _selectedSessionName == null) || _isLoading
+                        onPressed: (isSoloNameEmpty || (isClassOrOnline && _selectedSessionName == null) || _isLoading)
                             ? null
                             : _onStartPressed,
-                        child: _isLoading 
-                          ? const CircularProgressIndicator(color: Colors.white) 
+                        child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
                           : const Text('START'),
                       ),
                     ),

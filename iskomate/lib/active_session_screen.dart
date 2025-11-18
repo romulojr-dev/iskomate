@@ -1,8 +1,41 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
-class ActiveSessionScreen extends StatelessWidget {
+class ActiveSessionScreen extends StatefulWidget {
   final Map<String, String> session;
   const ActiveSessionScreen({super.key, required this.session});
+
+  @override
+  State<ActiveSessionScreen> createState() => _ActiveSessionScreenState();
+}
+
+class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
+  late Timer _timer;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _duration += const Duration(seconds: 1);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(d.inHours);
+    final minutes = twoDigits(d.inMinutes.remainder(60));
+    final seconds = twoDigits(d.inSeconds.remainder(60));
+    return '$hours:$minutes:$seconds';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +54,7 @@ class ActiveSessionScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Center(
             child: Text(
-              'STUDY SESSION 1',
+              widget.session['name'] ?? 'STUDY SESSION',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 28,
@@ -33,7 +66,7 @@ class ActiveSessionScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Center(
             child: Text(
-              session['date'] ?? '',
+              widget.session['date'] ?? '',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -41,19 +74,18 @@ class ActiveSessionScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text(
-              'Duration 00:00:00',
-              style: TextStyle(
+              'Duration ${_formatDuration(_duration)}',
+              style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
               ),
             ),
           ),
           const SizedBox(height: 24),
-          // Chart placeholder - increased height
           Container(
-            height: 320, // Increased from 200 to 320
+            height: 320,
             margin: const EdgeInsets.symmetric(horizontal: 12),
             color: Colors.black,
             child: Center(
@@ -63,7 +95,7 @@ class ActiveSessionScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 24), // Space between chart and legends
+          const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -98,7 +130,7 @@ class ActiveSessionScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 24), // Add some bottom padding
+          const SizedBox(height: 24),
         ],
       ),
     );
