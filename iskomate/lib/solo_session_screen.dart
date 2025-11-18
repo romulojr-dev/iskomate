@@ -7,71 +7,61 @@ import 'package:flutter/services.dart'; // Required for SystemChrome
 import 'theme.dart';
 import 'start_session.dart'; // Import the start_session.dart file
 
-class SoloSessionScreen extends StatefulWidget {
+class SoloSessionScreen extends StatelessWidget {
   final String sessionName;
+  final String sessionId;
 
-  const SoloSessionScreen({super.key, required this.sessionName});
-
-  @override
-  State<SoloSessionScreen> createState() => _SoloSessionScreenState();
-}
-
-class _SoloSessionScreenState extends State<SoloSessionScreen> {
-  // Timer variables
-  Timer? _timer;
-  Duration _duration = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _setSystemUIOverlay();
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _duration = Duration(seconds: _duration.inSeconds + 1);
-      });
-    });
-  }
-
-  // Helper to format duration to HH:MM:SS
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = twoDigits(duration.inHours);
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$hours:$minutes:$seconds";
-  }
-
-  void _setSystemUIOverlay() {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: kBackgroundColor,
-      systemNavigationBarIconBrightness: Brightness.light,
-    ));
-  }
-
-  void _handleTerminate() {
-    _timer?.cancel();
-    // Navigate back to the setup screen
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const SessionSetupScreen()),
-      (route) => false,
-    );
-  }
+  const SoloSessionScreen({
+    super.key,
+    required this.sessionName,
+    required this.sessionId,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Timer variables
+    Timer? _timer;
+    Duration _duration = Duration.zero;
+
+    void _startTimer() {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        _duration = Duration(seconds: _duration.inSeconds + 1);
+      });
+    }
+
+    // Helper to format duration to HH:MM:SS
+    String _formatDuration(Duration duration) {
+      String twoDigits(int n) => n.toString().padLeft(2, '0');
+      final hours = twoDigits(duration.inHours);
+      final minutes = twoDigits(duration.inMinutes.remainder(60));
+      final seconds = twoDigits(duration.inSeconds.remainder(60));
+      return "$hours:$minutes:$seconds";
+    }
+
+    void _setSystemUIOverlay() {
+      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: kBackgroundColor,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ));
+    }
+
+    void _handleTerminate() {
+      _timer?.cancel();
+      // Navigate back to the setup screen
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const SessionSetupScreen()),
+        (route) => false,
+      );
+    }
+
+    // Start the timer when the widget is built
+    _startTimer();
+    // Set the system UI overlay style
+    _setSystemUIOverlay();
+
     return Scaffold(
       backgroundColor: kBackgroundColor, // Matches previous page background
       body: SafeArea(
@@ -84,7 +74,7 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
 
               // SESSION NAME Header
               Text(
-                widget.sessionName.toUpperCase(),
+                sessionName.toUpperCase(),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,

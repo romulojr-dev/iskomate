@@ -79,11 +79,21 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
 
     Widget nextScreen;
     if (_selectedMode == SessionMode.solo) {
-      // Solo mode: use the entered session name, but DO NOT create a new session in Firestore
       final sessionName = _sessionNameController.text.trim().isEmpty
           ? 'Session ${DateTime.now().millisecondsSinceEpoch}'
           : _sessionNameController.text.trim();
-      nextScreen = SoloSessionScreen(sessionName: sessionName);
+
+      // Add to Firestore
+      final docRef = await FirebaseFirestore.instance.collection('sessions').add({
+        'name': sessionName,
+        'date': DateTime.now().toIso8601String(),
+        'mode': 'solo',
+        'students': [],
+        'duration': "00:00:00",
+        // Add other fields as needed
+      });
+
+      nextScreen = SoloSessionScreen(sessionName: sessionName, sessionId: docRef.id);
     } else {
       // Classroom/Online: use the selected session, DO NOT create a new session in Firestore
       if (_selectedSessionName == null) {
@@ -91,7 +101,6 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
         return;
       }
 
-      // Find the session document by name (or better, store the session ID when selecting)
       final query = await FirebaseFirestore.instance
           .collection('sessions')
           .where('name', isEqualTo: _selectedSessionName)
@@ -395,30 +404,6 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                       ),
                      const SizedBox(height: 100),
                   ],
-                ),
-              ),
-            ),
-
-            // ... (Your Overlays: Menu Button, Disconnect Button) ...
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Material(
-                color: Colors.transparent,
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    splashRadius: 24,
-                    icon: const Icon(Icons.menu, color: Colors.white),
-                    onPressed: () {
-                       Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) =>ListSessionsScreen()),
-                      );
-                    },
-                  ),
                 ),
               ),
             ),
