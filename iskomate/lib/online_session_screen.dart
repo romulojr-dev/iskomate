@@ -1,31 +1,29 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 
-// Internal imports matching your project structure
 import 'theme.dart';
-import 'start_session.dart'; // Import for navigation back
+import 'start_session.dart';
 
 class OnlineSessionScreen extends StatefulWidget {
   final String sessionName;
+  final String sessionId; // Required to listen to the specific database entry
 
-  const OnlineSessionScreen({super.key, required this.sessionName});
+  const OnlineSessionScreen({
+    super.key,
+    required this.sessionName,
+    required this.sessionId,
+  });
 
   @override
   State<OnlineSessionScreen> createState() => _OnlineSessionScreenState();
 }
 
 class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
-  // Timer variables
   Timer? _timer;
   Duration _duration = Duration.zero;
-
-  // Specific color from the design image (Maroon/Red)
   final Color _terminateColor = const Color(0xFF8D333C);
-  
-  // TODO: Replace these hardcoded values with real data
-  final String _engagedPercent = '75%';
-  final String _notEngagedPercent = '25%';
 
   @override
   void initState() {
@@ -48,7 +46,6 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     });
   }
 
-  // Helper to format duration to HH:MM:SS
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = twoDigits(duration.inHours);
@@ -66,9 +63,17 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     ));
   }
 
-  void _handleTerminate() {
+  void _handleTerminate() async {
     _timer?.cancel();
-    // Navigate back to the setup screen
+
+    // Update status to 'ended'
+    await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(widget.sessionId)
+        .update({'status': 'ended'});
+
+    if (!mounted) return;
+
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const SessionSetupScreen()),
@@ -79,16 +84,15 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackgroundColor, // Matches previous page background
+      backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0), // Side padding
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 60), // Top spacing
+              const SizedBox(height: 60),
 
-              // SESSION NAME Header
               Text(
                 widget.sessionName.toUpperCase(),
                 textAlign: TextAlign.center,
@@ -101,43 +105,71 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Engaged Box
-              _buildEngagementBox(
-                _engagedPercent, 
-                kAccentColor, // Maroon color from theme
-                Colors.white,
+              // --- REAL-TIME DATA SECTION ---
+              Expanded(
+                child: StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('sessions')
+                      .doc(widget.sessionId)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    String engagedText = "0%";
+                    String notEngagedText = "0%";
+
+                    if (snapshot.hasData && snapshot.data!.exists) {
+                      var data = snapshot.data!.data() as Map<String, dynamic>;
+
+                      if (data['graph_data'] != null && (data['graph_data'] as List).isNotEmpty) {
+                        List<dynamic> graphList = data['graph_data'];
+                        var latestPoint = graphList.last;
+
+                        int engaged = (latestPoint['engaged'] as num).toInt();
+                        int notEngaged = latestPoint['not_engaged'] != null 
+                            ? (latestPoint['not_engaged'] as num).toInt() 
+                            : (100 - engaged);
+
+                        engagedText = "$engaged%";
+                        notEngagedText = "$notEngaged%";
+                      }
+                    }
+
+                    return Column(
+                      children: [
+                        _buildEngagementBox(
+                          engagedText,
+                          kAccentColor,
+                          Colors.white,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildEngagementBox(
+                          notEngagedText,
+                          kLightGreyColor,
+                          kBackgroundColor,
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
+              // --- END REAL-TIME DATA ---
 
-              // Not Engaged Box
-              _buildEngagementBox(
-                _notEngagedPercent,
-                kLightGreyColor, // Light grey from theme
-                kBackgroundColor, // Dark text
-              ),
-
-              const Spacer(), // Pushes content to the bottom
-
-              // Duration Timer
               Text(
                 'Duration: ${_formatDuration(_duration)}',
                 style: const TextStyle(
                   color: kLightGreyColor,
-                  fontSize: 28, // Was 24
+                  fontSize: 28,
                   fontWeight: FontWeight.w400,
                 ),
               ),
               const SizedBox(height: 20),
 
-              // Legend
               _buildLegend(),
               const SizedBox(height: 20),
 
-              // TERMINATE SESSION Button
               Padding(
-                padding: const EdgeInsets.only(bottom: 40.0), // Bottom spacing
+                padding: const EdgeInsets.only(bottom: 40.0),
                 child: SizedBox(
-                  width: double.infinity, // Full width
+                  width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -151,7 +183,7 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                      ), // Fixed syntax
+                      ),
                     ),
                     onPressed: _handleTerminate,
                     child: const Text('TERMINATE SESSION'),
@@ -165,10 +197,9 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     );
   }
 
-  /// Helper widget to build the large percentage boxes
   Widget _buildEngagementBox(String percentage, Color backgroundColor, Color textColor) {
     return Container(
-      height: 200, // Was 180
+      height: 200,
       width: double.infinity,
       decoration: BoxDecoration(
         color: backgroundColor,
@@ -187,7 +218,6 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     );
   }
 
-  /// Helper widget to build the legend
   Widget _buildLegend() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -199,7 +229,6 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     );
   }
 
-  /// Helper for individual legend items
   Widget _buildLegendItem(Color color, String text) {
     return Row(
       children: [
@@ -208,7 +237,7 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
           height: 20,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(4), // Slightly rounded square
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
         const SizedBox(width: 8),

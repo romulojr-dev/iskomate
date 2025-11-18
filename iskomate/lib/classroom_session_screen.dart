@@ -1,31 +1,29 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 
-// Internal imports matching your project structure
 import 'theme.dart';
-import 'start_session.dart'; // Import for navigation back
+import 'start_session.dart';
 
 class ClassroomSessionScreen extends StatefulWidget {
   final String sessionName;
+  final String sessionId; // Required to listen to the specific database entry
 
-  const ClassroomSessionScreen({super.key, required this.sessionName});
+  const ClassroomSessionScreen({
+    super.key,
+    required this.sessionName,
+    required this.sessionId,
+  });
 
   @override
   State<ClassroomSessionScreen> createState() => _ClassroomSessionScreenState();
 }
 
 class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
-  // Timer variables
   Timer? _timer;
   Duration _duration = Duration.zero;
-
-  // Specific color from the design image (Maroon/Red)
   final Color _terminateColor = const Color(0xFF8D333C);
-  
-  // TODO: Replace these hardcoded values with real data
-  final String _engagedPercent = '75%';
-  final String _notEngagedPercent = '25%';
 
   @override
   void initState() {
@@ -48,7 +46,6 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     });
   }
 
-  // Helper to format duration to HH:MM:SS
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = twoDigits(duration.inHours);
@@ -66,9 +63,17 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     ));
   }
 
-  void _handleTerminate() {
+  void _handleTerminate() async {
     _timer?.cancel();
-    // Navigate back to the setup screen
+
+    // Update status to 'ended' in Firebase so the laptop knows to stop
+    await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(widget.sessionId)
+        .update({'status': 'ended'});
+
+    if (!mounted) return;
+
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const SessionSetupScreen()),
@@ -79,16 +84,16 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackgroundColor, // Matches previous page background
+      backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0), // Side padding
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 60), // Top spacing
+              const SizedBox(height: 60),
 
-              // SESSION NAME Header
+              // HEADER
               Text(
                 widget.sessionName.toUpperCase(),
                 textAlign: TextAlign.center,
@@ -101,43 +106,82 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Engaged Box
-              _buildEngagementBox(
-                _engagedPercent, 
-                kAccentColor, // Maroon color from theme
-                Colors.white,
-              ),
-              const SizedBox(height: 16),
+              // --- REAL-TIME DATA SECTION ---
+              // This StreamBuilder listens to the database changes 
+              Expanded(
+                child: StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('sessions')
+                      .doc(widget.sessionId)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    String engagedText = "0%";
+                    String notEngagedText = "0%";
 
-              // Not Engaged Box
-              _buildEngagementBox(
-                _notEngagedPercent,
-                kLightGreyColor, // Light grey from theme
-                kBackgroundColor, // Dark text
-              ),
+                    if (snapshot.hasData && snapshot.data!.exists) {
+                      var data = snapshot.data!.data() as Map<String, dynamic>;
 
-              const Spacer(), // Pushes content to the bottom
+                      // Check if there is any graph data yet
+                      if (data['graph_data'] != null && (data['graph_data'] as List).isNotEmpty) {
+                        List<dynamic> graphList = data['graph_data'];
+                        
+                        // Get the VERY LAST item added (the most recent real-time update)
+                        var latestPoint = graphList.last;
+
+                        int engaged = (latestPoint['engaged'] as num).toInt();
+                        
+                        // Calculate 'Not Engaged' (either from DB or 100 - engaged)
+                        int notEngaged = latestPoint['not_engaged'] != null 
+                            ? (latestPoint['not_engaged'] as num).toInt() 
+                            : (100 - engaged);
+
+                        engagedText = "$engaged%";
+                        notEngagedText = "$notEngaged%";
+                      }
+                    }
+
+                    return Column(
+                      children: [
+                        // Box 1: Engaged (Red)
+                        _buildEngagementBox(
+                          engagedText,
+                          kAccentColor,
+                          Colors.white,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Box 2: Not Engaged (Grey)
+                        _buildEngagementBox(
+                          notEngagedText,
+                          kLightGreyColor,
+                          kBackgroundColor, // Dark text for contrast
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              // --- END REAL-TIME DATA ---
 
               // Duration Timer
               Text(
                 'Duration: ${_formatDuration(_duration)}',
                 style: const TextStyle(
                   color: kLightGreyColor,
-                  fontSize: 28, // Was 24
+                  fontSize: 28,
                   fontWeight: FontWeight.w400,
                 ),
               ),
               const SizedBox(height: 20),
 
-              // Legend
               _buildLegend(),
               const SizedBox(height: 20),
 
-              // TERMINATE SESSION Button
+              // Terminate Button
               Padding(
-                padding: const EdgeInsets.only(bottom: 40.0), // Bottom spacing
+                padding: const EdgeInsets.only(bottom: 40.0),
                 child: SizedBox(
-                  width: double.infinity, // Full width
+                  width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
@@ -165,10 +209,9 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  /// Helper widget to build the large percentage boxes
   Widget _buildEngagementBox(String percentage, Color backgroundColor, Color textColor) {
     return Container(
-      height: 200, // Was 180
+      height: 200,
       width: double.infinity,
       decoration: BoxDecoration(
         color: backgroundColor,
@@ -187,7 +230,6 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  /// Helper widget to build the legend
   Widget _buildLegend() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -199,7 +241,6 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  /// Helper for individual legend items
   Widget _buildLegendItem(Color color, String text) {
     return Row(
       children: [
@@ -208,7 +249,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
           height: 20,
           decoration: BoxDecoration(
             color: color,
-            borderRadius: BorderRadius.circular(4), // Slightly rounded square
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
         const SizedBox(width: 8),

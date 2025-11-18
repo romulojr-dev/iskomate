@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 import 'theme.dart';
 import 'view_session_screen.dart';
 import 'edit_session_screen.dart';
 import 'add_session_screen.dart';
-import 'active_session_screen.dart'; // Add this import
+import 'session_info_screen.dart';
 
 class ListSessionsScreen extends StatefulWidget {
   const ListSessionsScreen({super.key});
@@ -13,34 +14,38 @@ class ListSessionsScreen extends StatefulWidget {
 }
 
 class _ListSessionsScreenState extends State<ListSessionsScreen> {
-  final List<Map<String, String>> _sessions = [
-    {'name': 'CAO: BSCPE 4-1', 'date': '2025-11-09'},
-    {'name': 'LCD: BSCPE 3-3', 'date': '2025-11-09'},
-    {'name': 'DSA: BSCPE 2-4', 'date': '2025-11-09'},
-    {'name': 'HDL: BSCPE 3-6', 'date': '2025-11-09'},
-    {'name': 'FCS: BSCPE 3-7', 'date': '2025-11-09'},
-  ];
+  // 1. Create a reference to your "sessions" collection in Firebase
+  final CollectionReference _sessionsCollection = 
+      FirebaseFirestore.instance.collection('sessions');
 
-  void _deleteSession(int index) {
-    setState(() {
-      _sessions.removeAt(index);
-    });
+  // Function to delete a session from Firebase
+  Future<void> _deleteSession(String id) async {
+    await _sessionsCollection.doc(id).delete();
   }
 
-  void _onViewSessionPressed(Map<String, String> session) {
+  // Navigate to View Screen passing the ID so it can listen to live updates/history
+  void _onViewSessionPressed(Map<String, dynamic> sessionData, String id) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ViewSessionScreen(session: session),
+        builder: (context) => ViewSessionScreen(
+          sessionData: sessionData,
+          sessionId: id, 
+        ),
       ),
     );
   }
 
-  void _onEditSessionPressed(Map<String, String> session) {
+  // Navigate to Edit Screen
+  void _onEditSessionPressed(Map<String, dynamic> sessionData, String id) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EditSessionScreen(session: session),
+        // You can modify EditSessionScreen later to accept 'id' if needed for saving
+        builder: (context) => EditSessionScreen(session: {
+          'name': sessionData['name'] ?? '', 
+          'date': sessionData['date'] ?? ''
+        }), 
       ),
     );
   }
@@ -57,15 +62,13 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBackgroundColor, // Use your theme background
+      backgroundColor: kBackgroundColor,
       appBar: AppBar(
         backgroundColor: kAccentColor,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'LIST OF SESSIONS',
@@ -80,76 +83,113 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-        child: ListView.builder(
-          itemCount: _sessions.length,
-          itemBuilder: (context, index) {
-            final session = _sessions[index];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white, // Button is white
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: kAccentColor, width: 2),
-                  ),
+        
+        // 2. StreamBuilder listens to the database in real-time
+        child: StreamBuilder<QuerySnapshot>(
+          stream: _sessionsCollection.orderBy('date', descending: true).snapshots(),
+          builder: (context, snapshot) {
+            // Handle Loading State
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            // Handle Error State
+            if (snapshot.hasError) {
+              return const Center(child: Text('Something went wrong', style: TextStyle(color: Colors.white)));
+            }
+
+            // Handle Empty State
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(
+                child: Text(
+                  'No sessions found in database.\nAdd them in Firebase Console or click +', 
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
-                // --- THIS IS THE CHANGE ---
-                // Clicking the button now calls _onViewSessionPressed
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ActiveSessionScreen(session: session),
-                  ),
-                ),
-                // --- END OF CHANGE ---
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              );
+            }
+
+            final data = snapshot.requireData;
+
+            return ListView.builder(
+              itemCount: data.size,
+              itemBuilder: (context, index) {
+                // 3. Get the individual document data
+                var doc = data.docs[index];
+                var session = doc.data() as Map<String, dynamic>;
+                String id = doc.id; // The unique ID from Firebase
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: kAccentColor, width: 2),
+                      ),
+                    ),
+                    // Clicking the main card body opens the View Screen (Graph)
+                    onPressed: () => _onViewSessionPressed(session, id),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            session['name']!,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                session['name'] ?? 'No Name',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                session['date'] ?? 'No Date',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            session['date']!,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_red_eye, color: Colors.grey),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => SessionInfoScreen(
+                                        session: session,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: kAccentColor),
+                                onPressed: () => _onEditSessionPressed(session, id),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _deleteSession(id),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove_red_eye, color: kAccentColor),
-                            onPressed: () => _onViewSessionPressed(session),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: kAccentColor),
-                            onPressed: () => _onEditSessionPressed(session),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deleteSession(index),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         ),

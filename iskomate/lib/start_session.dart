@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:iskomate/video.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+
 import 'overlay_logo.dart';
 import 'theme.dart';
 import 'provision_screen.dart';
@@ -9,7 +11,7 @@ import 'solo_session_screen.dart';
 import 'classroom_session_screen.dart';
 import 'online_session_screen.dart';
 import 'select_session_screen.dart';
-import 'list_sessions_screen.dart'; // Import ListSessionsScreen
+import 'list_sessions_screen.dart';
 
 enum SessionMode { solo, classroom, online }
 
@@ -25,7 +27,8 @@ class SessionSetupScreen extends StatefulWidget {
 class _SessionSetupScreenState extends State<SessionSetupScreen> {
   SessionMode _selectedMode = SessionMode.solo;
   final TextEditingController _sessionNameController = TextEditingController();
-  String? _selectedSessionName; // Store selected session for Classroom/Online
+  String? _selectedSessionName;
+  bool _isLoading = false; // Add loading state
 
   @override
   void initState() {
@@ -59,35 +62,52 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   }
 
   void _onSelectSessionPressed() async {
-    // Navigate to SelectSessionScreen and wait for result
     final result = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (context) => const SelectSessionScreen()),
     );
     if (result != null) {
       setState(() {
-        _selectedSessionName = result; // Update selected session
+        _selectedSessionName = result;
       });
     }
   }
 
-  void _onStartPressed() {
+  // --- MODIFIED START LOGIC ---
+  Future<void> _onStartPressed() async {
+    setState(() => _isLoading = true);
+
     final sessionName = _selectedMode == SessionMode.solo
         ? (_sessionNameController.text.trim().isEmpty
             ? 'Session ${DateTime.now().millisecondsSinceEpoch}'
             : _sessionNameController.text.trim())
         : (_selectedSessionName ?? '');
 
+    // 1. Create the document in Firebase
+    DocumentReference docRef = await FirebaseFirestore.instance.collection('sessions').add({
+      'name': sessionName,
+      'date': DateTime.now().toString().split(' ')[0], // YYYY-MM-DD
+      'mode': _selectedMode.toString(),
+      'status': 'active',
+      'graph_data': [], // Empty list to start
+    });
+
+    setState(() => _isLoading = false);
+
+    if (!mounted) return;
+
     Widget nextScreen;
     switch (_selectedMode) {
       case SessionMode.solo:
-        nextScreen = SoloSessionScreen(sessionName: sessionName);
+        nextScreen = SoloSessionScreen(sessionName: sessionName); // Update Solo later if needed
         break;
       case SessionMode.classroom:
-        nextScreen = ClassroomSessionScreen(sessionName: sessionName);
+        // 2. Pass the new ID to the active screen
+        nextScreen = ClassroomSessionScreen(sessionName: sessionName, sessionId: docRef.id);
         break;
       case SessionMode.online:
-        nextScreen = OnlineSessionScreen(sessionName: sessionName);
+        // 2. Pass the new ID to the active screen
+        nextScreen = OnlineSessionScreen(sessionName: sessionName, sessionId: docRef.id);
         break;
     }
 
@@ -98,6 +118,7 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   }
 
   Widget _buildToggle() {
+    // ... (Keep your existing toggle code exactly as is) ...
     return Row(
       children: [
         Expanded(
@@ -202,12 +223,11 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
-        child: Stack( // <-- Re-introduced Stack
+        child: Stack(
           children: [
-            // --- Main Content ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-              child: SingleChildScrollView( // <-- Added SingleChildScrollView
+              child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -224,8 +244,8 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+
                     if (isClassOrOnline) ...[
-                      // Select Session Button
                       SizedBox(
                         height: 55,
                         child: OutlinedButton(
@@ -254,7 +274,6 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                       ),
                       const SizedBox(height: 24),
                     ] else ...[
-                      // Session Name Input (for Solo)
                       TextField(
                         controller: _sessionNameController,
                         decoration: InputDecoration(
@@ -273,7 +292,7 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                       const SizedBox(height: 24),
                     ],
 
-                    // START Button
+                    // START Button with Loading Indicator
                     SizedBox(
                       height: 70,
                       child: ElevatedButton(
@@ -283,15 +302,17 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 15),
                           textStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                         ),
-                        onPressed: (isClassOrOnline && _selectedSessionName == null)
+                        onPressed: (isClassOrOnline && _selectedSessionName == null) || _isLoading
                             ? null
                             : _onStartPressed,
-                        child: const Text('START'),
+                        child: _isLoading 
+                          ? const CircularProgressIndicator(color: Colors.white) 
+                          : const Text('START'),
                       ),
                     ),
                     const SizedBox(height: 32),
 
-                    // SET MODE Title
+                    // ... (Rest of your UI code: SET MODE, Toggle, Camera Preview, List Button) ...
                     const Text(
                       'SET MODE',
                       textAlign: TextAlign.center,
@@ -349,24 +370,21 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                             ),
                           ),
                           onPressed: () {
-                            // Navigate to ListSessionsScreen
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const ListSessionsScreen()),
+                              MaterialPageRoute(builder: (context) => ListSessionsScreen()),
                             );
                           },
                           child: const Text('List of Sessions'),
                         ),
                       ),
-                    const SizedBox(height: 100), // Add padding for bottom button
+                     const SizedBox(height: 100),
                   ],
                 ),
               ),
             ),
 
-            // --- Overlays ---
-
-            // Top-right Menu Button
+            // ... (Your Overlays: Menu Button, Disconnect Button) ...
             Positioned(
               top: 12,
               right: 12,
@@ -380,10 +398,9 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                     splashRadius: 24,
                     icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () {
-                      // Changed this to navigate to ListSessionsScreen
-                      Navigator.push(
+                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const ListSessionsScreen()),
+                        MaterialPageRoute(builder: (context) =>ListSessionsScreen()),
                       );
                     },
                   ),
@@ -391,7 +408,6 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
               ),
             ),
 
-            // Disconnect button bottom-left
             Align(
               alignment: Alignment.bottomLeft,
               child: SafeArea(
