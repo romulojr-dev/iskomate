@@ -41,11 +41,10 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        // You can modify EditSessionScreen later to accept 'id' if needed for saving
-        builder: (context) => EditSessionScreen(session: {
-          'name': sessionData['name'] ?? '', 
-          'date': sessionData['date'] ?? ''
-        }), 
+        builder: (context) => EditSessionScreen(
+          sessionData: sessionData,
+          sessionId: id,
+        ),
       ),
     );
   }
@@ -140,7 +139,8 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
                 // 3. Get the individual document data
                 var doc = data.docs[index];
                 var session = doc.data() as Map<String, dynamic>;
-                String id = doc.id; // The unique ID from Firebase
+                String id = doc.id;
+                final students = session['students'] as List<dynamic>? ?? []; // <-- Move here
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
@@ -174,7 +174,7 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 session['date'] != null
-                                  ? session['date'].toString().substring(0, 10) // YYYY-MM-DD
+                                  ? session['date'].toString().substring(0, 10)
                                   : 'No Date',
                                 style: const TextStyle(
                                   fontSize: 14,

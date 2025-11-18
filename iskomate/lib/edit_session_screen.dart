@@ -1,34 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'theme.dart';
 
 class EditSessionScreen extends StatefulWidget {
-  final Map<String, String> session;
+  final Map<String, dynamic> sessionData;
+  final String sessionId;
 
-  const EditSessionScreen({super.key, required this.session});
+  const EditSessionScreen({super.key, required this.sessionData, required this.sessionId});
 
   @override
   State<EditSessionScreen> createState() => _EditSessionScreenState();
 }
 
 class _EditSessionScreenState extends State<EditSessionScreen> {
-  late TextEditingController _sessionNameController;
+  late TextEditingController _nameController;
   final TextEditingController _studentNoController = TextEditingController();
 
-  List<Map<String, String>> students = [
-    {'name': 'AUSTRIA, John Gwen Isaac', 'id': '2022-09934-MN-0'},
-    {'name': 'RAMOS JR., Romulo D.', 'id': '2022-09934-MN-0'},
-    {'name': 'TUAZON, Ivan Lawrence', 'id': '2022-09934-MN-0'},
-  ];
+  late List<Map<String, String>> students;
 
   @override
   void initState() {
     super.initState();
-    _sessionNameController = TextEditingController(text: widget.session['name']);
+    _nameController = TextEditingController(text: widget.sessionData['name']);
+    students = List<Map<String, String>>.from(widget.sessionData['students'] ?? []);
   }
 
   @override
   void dispose() {
-    _sessionNameController.dispose();
+    _nameController.dispose();
     _studentNoController.dispose();
     super.dispose();
   }
@@ -46,15 +45,12 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
     }
   }
 
-  void _saveSessionName() {
-    setState(() {
-      // This will update the session name in the controller and UI
-      widget.session['name'] = _sessionNameController.text.trim();
+  Future<void> _saveChanges() async {
+    await FirebaseFirestore.instance.collection('sessions').doc(widget.sessionId).update({
+      'name': _nameController.text.trim(),
+      'students': students,
     });
-    // You can add further logic to persist this change if needed
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Session name updated')),
-    );
+    Navigator.pop(context);
   }
 
   @override
@@ -94,7 +90,7 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _sessionNameController,
+                    controller: _nameController,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -125,7 +121,7 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: _saveSessionName,
+                  onPressed: _saveChanges,
                   child: const Text('Save'),
                 ),
               ],

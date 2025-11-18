@@ -11,7 +11,6 @@ const Color _barelyEngagedColor = Color(0xFF8B3A3A);
 const Color _engagedColor = Color(0xFFEBE0D2); 
 const Color _notEngagedColor = Color(0xFFFFFFFF); 
 
-
 class ViewSessionScreen extends StatefulWidget {
   final Map<String, dynamic> sessionData;
   final String sessionId; 
@@ -42,29 +41,27 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
     ));
   }
 
-  // --- Widget for a single legend item ---
-  // Adjusted font size to 14 to save space and reduce overflow risk
   Widget _buildLegendItem(Color color, String label, {bool hasBorder = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 16, // Slightly smaller box
+          width: 16,
           height: 16,
           decoration: BoxDecoration(
             color: color,
             border: hasBorder
                 ? Border.all(color: Colors.white, width: 1.0)
                 : null,
-            borderRadius: BorderRadius.circular(2), // Smaller border radius
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
-        const SizedBox(width: 6), // Slightly smaller space
+        const SizedBox(width: 6),
         Text(
           label,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 14, // Reduced font size
+            fontSize: 14,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.0,
           ),
@@ -73,7 +70,6 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
     );
   }
 
-  // --- REVISED Widget for the 4-item Legend ---
   Widget _buildLegend() {
     return Column(
       children: [
@@ -96,7 +92,6 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
     );
   }
 
-  // Chart Configuration Logic (Kept the same)
   LineChartData _buildChartData(
     List<FlSpot> highlyEngaged,
     List<FlSpot> barelyEngaged,
@@ -108,7 +103,6 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
     if (barelyEngaged.isNotEmpty) maxX = barelyEngaged.last.x > maxX ? barelyEngaged.last.x : maxX;
     if (engaged.isNotEmpty) maxX = engaged.last.x > maxX ? engaged.last.x : maxX;
     if (notEngaged.isNotEmpty) maxX = notEngaged.last.x > maxX ? notEngaged.last.x : maxX;
-
 
     return LineChartData(
       gridData: FlGridData(
@@ -245,7 +239,6 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
         if (engagedSpots.isEmpty) engagedSpots = [const FlSpot(0, 0)];
         if (notEngagedSpots.isEmpty) notEngagedSpots = [const FlSpot(0, 0)];
 
-
         return Scaffold(
           backgroundColor: kBackgroundColor,
           appBar: AppBar(
@@ -303,7 +296,7 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
                   ),
                   const SizedBox(height: 40),
                   
-                  // REVISED LEGEND (No longer inside LayoutBuilder)
+                  // REVISED LEGEND
                   _buildLegend(),
                   
                   const SizedBox(height: 40),

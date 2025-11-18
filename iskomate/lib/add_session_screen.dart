@@ -15,36 +15,21 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
 
   final List<Map<String, String>> students = [];
 
-  void _addStudent() {
-    final studentNo = _studentNoController.text.trim();
-    if (studentNo.isNotEmpty) {
-      setState(() {
-        students.add({
-          'name': studentNo,
-          'id': '2022-09934-MN-0', // You can change this logic as needed
-        });
-        _studentNoController.clear();
-      });
-    }
+  void _addStudent(String id, String name) {
+    setState(() {
+      students.add({'id': id, 'name': name});
+    });
   }
 
   Future<void> _saveSession() async {
     final sessionName = _sessionNameController.text.trim();
-    if (sessionName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a session name')),
-      );
-      return;
-    }
-
-    // Save to Firestore
+    if (sessionName.isEmpty) return;
     await FirebaseFirestore.instance.collection('sessions').add({
       'name': sessionName,
       'date': DateTime.now().toIso8601String(),
       'students': students,
     });
-
-    Navigator.pop(context); // Go back to previous screen
+    Navigator.pop(context);
   }
 
   @override
@@ -229,7 +214,13 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: _addStudent,
+                  onPressed: () {
+                    final studentNo = _studentNoController.text.trim();
+                    if (studentNo.isNotEmpty) {
+                      _addStudent('2022-09934-MN-0', studentNo); // Example ID
+                      _studentNoController.clear();
+                    }
+                  },
                   child: const Text('Enter'),
                 ),
               ],
