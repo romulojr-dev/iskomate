@@ -1,16 +1,17 @@
-// start_session.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:iskomate/video.dart';
-
-// open sessions screen
-import 'session.dart';
-import 'active_session.dart'; // ensure this import exists so VideoPopupScreen is available
-import 'session_store.dart' as session_store;
 import 'overlay_logo.dart';
-import 'theme.dart'; // <-- add this import to get colors from theme
+import 'theme.dart';
 import 'provision_screen.dart';
+import 'solo_session_screen.dart';
+import 'classroom_session_screen.dart';
+import 'online_session_screen.dart';
+import 'select_session_screen.dart';
+import 'list_sessions_screen.dart'; // Import ListSessionsScreen
+
+enum SessionMode { solo, classroom, online }
 
 class SessionSetupScreen extends StatefulWidget {
   final String? selectedDeviceName;
@@ -22,12 +23,9 @@ class SessionSetupScreen extends StatefulWidget {
 }
 
 class _SessionSetupScreenState extends State<SessionSetupScreen> {
-  bool _isSoloMode = true; // State for the Solo/Classroom toggle
+  SessionMode _selectedMode = SessionMode.solo;
   final TextEditingController _sessionNameController = TextEditingController();
-
-  // Drag state for holdable toggle
-  bool _isDraggingToggle = false;
-  double _dragLeft = 0.0;
+  String? _selectedSessionName; // Store selected session for Classroom/Online
 
   @override
   void initState() {
@@ -37,17 +35,16 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
 
   @override
   void dispose() {
-    _sessionNameController.dispose(); // Clean up the controller when the widget is removed
+    _sessionNameController.dispose();
     super.dispose();
   }
 
-  // Set system UI (status bar and navigation bar) colors
   void _setSystemUIOverlay() {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent, // Making status bar transparent
-      statusBarIconBrightness: Brightness.light, // For dark background
-      systemNavigationBarColor: kBackgroundColor, // Matching app background
-      systemNavigationBarIconBrightness: Brightness.light, // For dark background
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: kBackgroundColor,
+      systemNavigationBarIconBrightness: Brightness.light,
     ));
   }
 
@@ -61,50 +58,220 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
     );
   }
 
+  void _onSelectSessionPressed() async {
+    // Navigate to SelectSessionScreen and wait for result
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const SelectSessionScreen()),
+    );
+    if (result != null) {
+      setState(() {
+        _selectedSessionName = result; // Update selected session
+      });
+    }
+  }
+
+  void _onStartPressed() {
+    final sessionName = _selectedMode == SessionMode.solo
+        ? (_sessionNameController.text.trim().isEmpty
+            ? 'Session ${DateTime.now().millisecondsSinceEpoch}'
+            : _sessionNameController.text.trim())
+        : (_selectedSessionName ?? '');
+
+    Widget nextScreen;
+    switch (_selectedMode) {
+      case SessionMode.solo:
+        nextScreen = SoloSessionScreen(sessionName: sessionName);
+        break;
+      case SessionMode.classroom:
+        nextScreen = ClassroomSessionScreen(sessionName: sessionName);
+        break;
+      case SessionMode.online:
+        nextScreen = OnlineSessionScreen(sessionName: sessionName);
+        break;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => nextScreen),
+    );
+  }
+
+  Widget _buildToggle() {
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedMode = SessionMode.solo;
+                _selectedSessionName = null; // Clear selected session
+              });
+            },
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: _selectedMode == SessionMode.solo ? kAccentColor : Colors.transparent,
+                border: Border.all(color: kAccentColor, width: 2),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  bottomLeft: Radius.circular(8),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'Solo',
+                  style: TextStyle(
+                    color: _selectedMode == SessionMode.solo ? Colors.white : kLightGreyColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedMode = SessionMode.classroom;
+                _selectedSessionName = null; // Clear selected session
+              });
+            },
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: _selectedMode == SessionMode.classroom ? kAccentColor : Colors.transparent,
+                border: Border(
+                  top: BorderSide(color: kAccentColor, width: 2),
+                  bottom: BorderSide(color: kAccentColor, width: 2),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'Classroom',
+                  style: TextStyle(
+                    color: _selectedMode == SessionMode.classroom ? Colors.white : kLightGreyColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedMode = SessionMode.online;
+                _selectedSessionName = null; // Clear selected session
+              });
+            },
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: _selectedMode == SessionMode.online ? kAccentColor : Colors.transparent,
+                border: Border.all(color: kAccentColor, width: 2),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(8),
+                  bottomRight: Radius.circular(8),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'Online',
+                  style: TextStyle(
+                    color: _selectedMode == SessionMode.online ? Colors.white : kLightGreyColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isClassOrOnline = _selectedMode == SessionMode.classroom || _selectedMode == SessionMode.online;
     return Scaffold(
       backgroundColor: kBackgroundColor,
       body: SafeArea(
-        child: Stack(
+        child: Stack( // <-- Re-introduced Stack
           children: [
-            // Main scrollable content (existing)
-            SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+            // --- Main Content ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+              child: SingleChildScrollView( // <-- Added SingleChildScrollView
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
+                  children: [
                     const SizedBox(height: 6),
                     const Text(
-                      'CREATE SESSION',
+                      'ISKOMATE',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 32,
                         fontWeight: FontWeight.w900,
                         height: 1.2,
+                        letterSpacing: 2,
                       ),
                     ),
                     const SizedBox(height: 24),
-                    
-                    // Session Name Input
-                    TextField(
-                      controller: _sessionNameController,
-                      decoration: InputDecoration(
-                        hintText: 'Session name',
-                        hintStyle: const TextStyle(color: kLightGreyColor),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10.0),
-                          borderSide: BorderSide.none,
+                    if (isClassOrOnline) ...[
+                      // Select Session Button
+                      SizedBox(
+                        height: 55,
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: kAccentColor, width: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10.0),
+                            ),
+                            backgroundColor: Colors.transparent,
+                          ),
+                          onPressed: _onSelectSessionPressed,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _selectedSessionName ?? 'Select Session',
+                                style: TextStyle(
+                                  color: kLightGreyColor,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              Icon(Icons.chevron_right, color: kAccentColor),
+                            ],
+                          ),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                       ),
-                      style: const TextStyle(color: Colors.black, fontSize: 18), // Text input color
-                    ),
-                    const SizedBox(height: 30),
+                      const SizedBox(height: 24),
+                    ] else ...[
+                      // Session Name Input (for Solo)
+                      TextField(
+                        controller: _sessionNameController,
+                        decoration: InputDecoration(
+                          hintText: 'Session name',
+                          hintStyle: const TextStyle(color: kLightGreyColor),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10.0),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                        ),
+                        style: const TextStyle(color: Colors.black, fontSize: 18),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
 
                     // START Button
                     SizedBox(
@@ -114,60 +281,15 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                           backgroundColor: kAccentColor,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 15),
-                          textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          textStyle: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                         ),
-                        onPressed: () async {
-                          // prepare session name
-                          final sessionName = _sessionNameController.text.trim().isEmpty
-                              ? 'Session ${DateTime.now().millisecondsSinceEpoch}'
-                              : _sessionNameController.text.trim();
-
-                          String deviceName = '';
-                          if (widget.selectedDeviceName != null && widget.selectedDeviceName!.contains('@')) {
-                            deviceName = widget.selectedDeviceName!.split('@')[0];
-                          }
-
-                          // create session object
-                          final id = DateTime.now().millisecondsSinceEpoch.toString();
-                          
-                          const String currentPiIp = '100.74.50.99';
-                          
-                          final session = session_store.Session(
-                            id: id,
-                            name: sessionName,
-                            deviceName: deviceName, // The Wi-Fi name
-                            deviceIp: currentPiIp, // The static Tailscale IP
-                            createdAt: DateTime.now().millisecondsSinceEpoch,
-                          );
-
-                          // save persistently and update in-memory notifier
-                          try {
-                            await session_store.SessionStore.addSession(session);
-                          } catch (_) {
-                            // ignore persistence errors for now
-                          }
-
-                          // clear input and dismiss keyboard
-                          _sessionNameController.clear();
-                          FocusScope.of(context).unfocus();
-
-                          // navigate directly to ActiveSessionScreen
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ActiveSessionScreen(
-                                sessionName: session.name,
-                                deviceName: session.deviceName,
-                                deviceIp: session.deviceIp, // <-- This passes the Tailscale IP
-                                isSolo: _isSoloMode,
-                              ),
-                            ),
-                          );
-                        },
+                        onPressed: (isClassOrOnline && _selectedSessionName == null)
+                            ? null
+                            : _onStartPressed,
                         child: const Text('START'),
                       ),
                     ),
-                    const SizedBox(height: 50),
+                    const SizedBox(height: 32),
 
                     // SET MODE Title
                     const Text(
@@ -182,160 +304,69 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Solo / Classroom Toggle
-                    // ... (no changes in this large widget) ...
-                    LayoutBuilder(builder: (context, constraints) {
-                      final totalW = constraints.maxWidth;
-                      final innerW = (totalW - 6).clamp(0.0, totalW);
-                      final halfInner = innerW / 2;
-                      const double edgeGap = 6.0;
-                      final indicatorW = (halfInner - edgeGap * 2).clamp(0.0, halfInner);
-                      final minLeft = edgeGap;
-                      final maxLeft = halfInner + edgeGap;
-                      final computedLeft = _isDraggingToggle
-                          ? _dragLeft.clamp(minLeft, maxLeft)
-                          : (_isSoloMode ? minLeft : maxLeft);
-                      final indicatorCenter = computedLeft + (indicatorW / 2);
-                      final leftLabelActive = _isDraggingToggle
-                          ? (indicatorCenter < (innerW / 2))
-                          : _isSoloMode;
+                    SizedBox(height: 44, child: _buildToggle()),
+                    const SizedBox(height: 24),
 
-                      return GestureDetector(
-                        onTapUp: (details) {
-                          setState(() => _isSoloMode = details.localPosition.dx < (totalW / 2));
-                        },
-                        onPanStart: (details) {
-                          setState(() {
-                            _isDraggingToggle = true;
-                            _dragLeft = (details.localPosition.dx - indicatorW / 2).clamp(minLeft, maxLeft);
-                          });
-                        },
-                        onPanUpdate: (details) {
-                          setState(() {
-                            _dragLeft = (details.localPosition.dx - indicatorW / 2).clamp(minLeft, maxLeft);
-                          });
-                        },
-                        onPanEnd: (_) {
-                          setState(() {
-                            _isDraggingToggle = false;
-                            final center = (_dragLeft + (indicatorW / 2)).clamp(minLeft, maxLeft);
-                            _isSoloMode = center < (innerW / 2);
-                            _dragLeft = 0.0;
-                          });
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(30.0),
-                          child: Container(
-                            height: 50,
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: kBackgroundColor,
-                              borderRadius: BorderRadius.circular(30.0),
-                              border: Border.all(color: kAccentColor, width: 2),
-                            ),
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                AnimatedPositioned(
-                                  duration: const Duration(milliseconds: 180),
-                                  left: computedLeft,
-                                  width: indicatorW,
-                                  curve: Curves.easeOut,
-                                  child: Container(
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: kAccentColor,
-                                      borderRadius: BorderRadius.circular(25),
-                                    ),
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Center(
-                                        child: Text(
-                                          'Solo',
-                                          style: TextStyle(
-                                            color: leftLabelActive ? Colors.white : kLightGreyColor,
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Center(
-                                        child: Text(
-                                          'Classroom',
-                                          style: TextStyle(
-                                            color: leftLabelActive ? kLightGreyColor : Colors.white,
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                    // Camera Preview Button (always works)
+                    SizedBox(
+                      height: 44,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kAccentColor,
+                          foregroundColor: Colors.white,
+                          textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                      );
-                    }),
-                    const SizedBox(height: 50),
-
-                    // Camera Preview Button (open small popup)
-                    GestureDetector(
-                      // <-- MODIFIED THIS ONTAP
-                      onTap: () {
-                        // This now calls the VideoPreviewDialog from your video.dart file
-                        showDialog(
-                          context: context,
-                          builder: (context) => const VideoPreviewDialog(
-                            webSocketUrl: 'ws://100.74.50.99:8765',
-                            width: 340,
-                            height: 220,
-                          ),
-                        );
-                      },
-                      // <-- END OF MODIFICATION
-                      child: Container(
-                        height: 55,
-                        decoration: BoxDecoration(
-                          color: kAccentColor,
-                          borderRadius: BorderRadius.circular(10.0),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 24,
+                        icon: const Icon(Icons.camera_alt, size: 22),
+                        label: const Text('Camera Preview'),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => const VideoPreviewDialog(
+                              webSocketUrl: 'ws://100.74.50.99:8765',
+                              width: 340,
+                              height: 220,
                             ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Camera Preview',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ),
-                    const SizedBox(height: 20), // Spacing at the bottom
+                    const SizedBox(height: 12),
+
+                    // List of Sessions Button (only for Classroom/Online)
+                    if (isClassOrOnline)
+                      SizedBox(
+                        height: 44,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kAccentColor,
+                            foregroundColor: Colors.white,
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () {
+                            // Navigate to ListSessionsScreen
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const ListSessionsScreen()),
+                            );
+                          },
+                          child: const Text('List of Sessions'),
+                        ),
+                      ),
+                    const SizedBox(height: 100), // Add padding for bottom button
                   ],
                 ),
               ),
             ),
 
-            // ... (rest of the file is unchanged) ...
-            
-            // Overlay: three-line list button in top-right
+            // --- Overlays ---
+
+            // Top-right Menu Button
             Positioned(
               top: 12,
               right: 12,
@@ -349,9 +380,10 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                     splashRadius: 24,
                     icon: const Icon(Icons.menu, color: Colors.white),
                     onPressed: () {
+                      // Changed this to navigate to ListSessionsScreen
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const SessionScreen()),
+                        MaterialPageRoute(builder: (context) => const ListSessionsScreen()),
                       );
                     },
                   ),
