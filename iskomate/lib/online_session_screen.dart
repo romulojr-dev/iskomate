@@ -35,11 +35,14 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
   // Keep this for consistency if _terminateColor is distinct from _terminateButtonColor
   final Color _terminateColor = const Color(0xFF8D333C); 
 
+  DateTime? _startTime;
+
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
+    _startTime = DateTime.now(); // Save when session starts
   }
 
   @override
@@ -77,11 +80,23 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
   void _handleTerminate() async {
     _timer?.cancel();
 
+    final endTime = DateTime.now();
+    final duration = endTime.difference(_startTime!);
+
+    String formattedDuration = [
+      duration.inHours.toString().padLeft(2, '0'),
+      (duration.inMinutes % 60).toString().padLeft(2, '0'),
+      (duration.inSeconds % 60).toString().padLeft(2, '0'),
+    ].join(':');
+
     // Update status to 'ended'
     await FirebaseFirestore.instance
         .collection('sessions')
         .doc(widget.sessionId)
-        .update({'status': 'ended'});
+        .update({
+          'status': 'ended',
+          'duration': formattedDuration
+        });
 
     if (!mounted) return;
 

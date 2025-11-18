@@ -34,12 +34,14 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   Timer? _timer;
   Duration _duration = Duration.zero;
   final Color _terminateColor = const Color(0xFF8D333C); // Keeping your original terminate color definition
+  DateTime? _startTime;
 
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
+    _startTime = DateTime.now(); // Save when session starts
   }
 
   @override
@@ -81,6 +83,20 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
         .collection('sessions')
         .doc(widget.sessionId)
         .update({'status': 'ended'});
+
+    final endTime = DateTime.now();
+    final duration = endTime.difference(_startTime!);
+
+    String formattedDuration = [
+      duration.inHours.toString().padLeft(2, '0'),
+      (duration.inMinutes % 60).toString().padLeft(2, '0'),
+      (duration.inSeconds % 60).toString().padLeft(2, '0'),
+    ].join(':');
+
+    await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(widget.sessionId) // Use your actual sessionId here
+        .update({'duration': formattedDuration});
 
     if (!mounted) return;
 

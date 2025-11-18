@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 
 // Internal imports matching your project structure
 import 'theme.dart';
@@ -27,6 +28,7 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
   // Timer variables moved into the State class
   Timer? _timer;
   Duration _duration = Duration.zero;
+  DateTime? _startTime; // Track when the session starts
 
   // STEP 3: Initialize Timer and System UI
   @override
@@ -34,6 +36,7 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
+    _startTime = DateTime.now(); // Save when session starts
   }
 
   // STEP 4: Cancel Timer when the widget is closed
@@ -81,6 +84,24 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
       MaterialPageRoute(builder: (context) => const SessionSetupScreen()),
       (route) => false,
     );
+  }
+
+  void _terminateSession() async {
+    final endTime = DateTime.now();
+    final duration = endTime.difference(_startTime!);
+
+    String formattedDuration = [
+      duration.inHours.toString().padLeft(2, '0'),
+      (duration.inMinutes % 60).toString().padLeft(2, '0'),
+      (duration.inSeconds % 60).toString().padLeft(2, '0'),
+    ].join(':');
+
+    await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(widget.sessionId) // Use the sessionId from the widget
+        .update({'duration': formattedDuration});
+
+    Navigator.pop(context); // Or whatever you do to end the session
   }
 
   @override
@@ -157,7 +178,9 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    onPressed: _handleTerminate,
+                    onPressed: () {
+                      _terminateSession(); // Call the new terminate function
+                    },
                     child: const Text('TERMINATE SESSION'),
                   ),
                 ),
