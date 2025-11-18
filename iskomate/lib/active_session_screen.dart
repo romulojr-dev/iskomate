@@ -1,41 +1,8 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 
-class ActiveSessionScreen extends StatefulWidget {
+class ActiveSessionScreen extends StatelessWidget {
   final Map<String, String> session;
   const ActiveSessionScreen({super.key, required this.session});
-
-  @override
-  State<ActiveSessionScreen> createState() => _ActiveSessionScreenState();
-}
-
-class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
-  late Timer _timer;
-  Duration _duration = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _duration += const Duration(seconds: 1);
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = twoDigits(d.inHours);
-    final minutes = twoDigits(d.inMinutes.remainder(60));
-    final seconds = twoDigits(d.inSeconds.remainder(60));
-    return '$hours:$minutes:$seconds';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +21,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           const SizedBox(height: 12),
           Center(
             child: Text(
-              widget.session['name'] ?? 'STUDY SESSION',
+              'STUDY SESSION 1',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 28,
@@ -66,7 +33,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           const SizedBox(height: 8),
           Center(
             child: Text(
-              widget.session['date'] ?? '',
+              session['date'] ?? '',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -74,18 +41,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Center(
+          const Center(
             child: Text(
-              'Duration ${_formatDuration(_duration)}',
-              style: const TextStyle(
+              'Duration 00:00:00',
+              style: TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
               ),
             ),
           ),
           const SizedBox(height: 24),
+          // Chart placeholder
           Container(
-            height: 320,
+            height: 200,
             margin: const EdgeInsets.symmetric(horizontal: 12),
             color: Colors.black,
             child: Center(
@@ -95,7 +63,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -130,7 +98,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
         ],
       ),
     );
