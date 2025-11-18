@@ -15,6 +15,8 @@ class EditSessionScreen extends StatefulWidget {
 class _EditSessionScreenState extends State<EditSessionScreen> {
   late TextEditingController _nameController;
   final TextEditingController _studentNoController = TextEditingController();
+  final TextEditingController _studentNameController = TextEditingController();
+  final TextEditingController _studentIdController = TextEditingController();
 
   late List<Map<String, String>> students;
 
@@ -33,7 +35,8 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _studentNoController.dispose();
+    _studentNameController.dispose();
+    _studentIdController.dispose();
     super.dispose();
   }
 
@@ -207,13 +210,41 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _studentNoController,
+                    controller: _studentNameController,
                     style: const TextStyle(
                       color: Colors.white,
                       fontStyle: FontStyle.italic,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Enter Student No.',
+                      hintText: 'Name',
+                      hintStyle: const TextStyle(
+                        color: Colors.white70,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      filled: true,
+                      fillColor: Colors.transparent,
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white, width: 1.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: kAccentColor, width: 2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _studentIdController,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'ID',
                       hintStyle: const TextStyle(
                         color: Colors.white70,
                         fontStyle: FontStyle.italic,
@@ -242,7 +273,17 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: _addStudent,
+                  onPressed: () {
+                    final studentName = _studentNameController.text.trim();
+                    final studentId = _studentIdController.text.trim();
+                    if (studentName.isNotEmpty && studentId.isNotEmpty) {
+                      setState(() {
+                        students.add({'name': studentName, 'id': studentId});
+                      });
+                      _studentNameController.clear();
+                      _studentIdController.clear();
+                    }
+                  },
                   child: const Text('Enter'),
                 ),
               ],

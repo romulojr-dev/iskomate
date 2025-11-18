@@ -45,6 +45,18 @@ class SelectSessionScreen extends StatelessWidget {
               itemCount: sessions.length,
               itemBuilder: (context, index) {
                 final session = sessions[index].data() as Map<String, dynamic>;
+                final sessionName = session['name'] ?? 'No Name';
+                final sessionDateRaw = session['date'] ?? '';
+                String sessionDate = sessionDateRaw;
+                if (sessionDateRaw.isNotEmpty) {
+                  try {
+                    final dt = DateTime.parse(sessionDateRaw);
+                    sessionDate = "${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+                  } catch (_) {
+                    sessionDate = sessionDateRaw.split('T').first;
+                  }
+                }
+
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
                   child: ElevatedButton(
@@ -70,7 +82,7 @@ class SelectSessionScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                session['name'] ?? 'No Name',
+                                sessionName,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 18,
@@ -78,7 +90,7 @@ class SelectSessionScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                session['date'] ?? 'No Date',
+                                sessionDate,
                                 style: const TextStyle(
                                   fontSize: 14,
                                 ),

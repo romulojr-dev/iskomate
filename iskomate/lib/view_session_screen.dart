@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart'; // Add this import
 
 import 'theme.dart';
 
@@ -205,7 +206,16 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
             : widget.sessionData;
 
         final String sessionName = data['name'] ?? 'STUDY SESSION 1';
-        final String sessionDate = data['date'] ?? '2025-11-09';
+        final String sessionDateRaw = data['date'] ?? '';
+        String sessionDate = sessionDateRaw;
+        if (sessionDateRaw.isNotEmpty) {
+          try {
+            final dt = DateTime.parse(sessionDateRaw);
+            sessionDate = DateFormat('yyyy-MM-dd   HH:mm:ss').format(dt);
+          } catch (_) {
+            sessionDate = sessionDateRaw;
+          }
+        }
         final String sessionDuration = data['duration'] != null ? data['duration'] as String : "00:00:00"; 
 
         // 2. Parse the Graph Data coming from Firebase (4 lines)
