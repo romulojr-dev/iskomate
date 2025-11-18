@@ -22,7 +22,12 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.sessionData['name']);
-    students = List<Map<String, String>>.from(widget.sessionData['students'] ?? []);
+    students = (widget.sessionData['students'] as List<dynamic>? ?? [])
+        .map((e) => {
+              'name': e['name']?.toString() ?? '',
+              'id': e['id']?.toString() ?? '',
+            })
+        .toList();
   }
 
   @override
@@ -148,24 +153,39 @@ class _EditSessionScreenState extends State<EditSessionScreen> {
                   ),
                   itemBuilder: (context, index) {
                     final student = students[index];
-                    return Column(
+                    return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          student['name']!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                student['name']!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                student['id']!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Text(
-                          student['id']!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                          ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            setState(() {
+                              students.removeAt(index);
+                            });
+                          },
                         ),
                       ],
                     );
