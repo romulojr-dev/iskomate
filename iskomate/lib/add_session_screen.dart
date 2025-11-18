@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
 import 'theme.dart';
 
 class AddSessionScreen extends StatefulWidget {
@@ -182,6 +183,9 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
                 Expanded(
                   child: TextField(
                     controller: _studentNameController,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r"[^\d]+")), // No numbers
+                    ],
                     style: const TextStyle(
                       color: Colors.white,
                       fontStyle: FontStyle.italic,
@@ -210,6 +214,12 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
                 Expanded(
                   child: TextField(
                     controller: _studentIdController,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                      LengthLimitingTextInputFormatter(12),
+                      _DashTextInputFormatter(),
+                    ],
+                    keyboardType: TextInputType.text,
                     style: const TextStyle(
                       color: Colors.white,
                       fontStyle: FontStyle.italic,
@@ -260,6 +270,29 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Custom formatter for dashes
+class _DashTextInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digits = newValue.text.replaceAll('-', '');
+    StringBuffer buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      buffer.write(digits[i]);
+      // Insert dashes at positions 4, 9, 11 (after 4, 9, 11 chars)
+      if ((i == 3 || i == 8 || i == 10) && i != digits.length - 1) {
+        buffer.write('-');
+      }
+    }
+    return TextEditingValue(
+      text: buffer.toString(),
+      selection: TextSelection.collapsed(offset: buffer.length),
     );
   }
 }
