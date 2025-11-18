@@ -6,6 +6,16 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 import 'theme.dart';
 import 'start_session.dart';
 
+// --- Define Colors for the 4-Quadrant UI (Based on the image) ---
+// Note: Assuming kBackgroundColor is defined in theme.dart
+const Color _highlyEngagedColor = Color(0xFFB11212); // Deep Red (Top Left)
+const Color _barelyEngagedColor = Color(0xFF8B3A3A); // Darker Red (Top Right)
+const Color _engagedColor = Color(0xFFEBE0D2); // Cream/Beige (Bottom Left)
+const Color _notEngagedColor = Color(0xFFFFFFFF); // White (Bottom Right)
+const Color _terminateButtonColor = Color(0xFFB11212); // Termination button color from the image
+const Color _darkTextColor = Color(0xFF332C2B); // Dark text color for light tiles
+
+
 class ClassroomSessionScreen extends StatefulWidget {
   final String sessionName;
   final String sessionId; // Required to listen to the specific database entry
@@ -23,7 +33,7 @@ class ClassroomSessionScreen extends StatefulWidget {
 class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   Timer? _timer;
   Duration _duration = Duration.zero;
-  final Color _terminateColor = const Color(0xFF8D333C);
+  final Color _terminateColor = const Color(0xFF8D333C); // Keeping your original terminate color definition
 
   @override
   void initState() {
@@ -81,60 +91,163 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
+  // --- Widget for the individual percentage tile (2x2 grid) ---
+  Widget _buildPercentageTile(BuildContext context, String percentage, Color color, Color textColor) {
+    return Expanded(
+      child: Container(
+        // Set height to be roughly square
+        height: MediaQuery.of(context).size.width / 2 - 30,
+        margin: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(4),
+          // Add border for light tiles
+          border: color == _engagedColor || color == _notEngagedColor
+              ? Border.all(color: Colors.white10, width: 1.0)
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            percentage,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 60,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Widget for a single legend item ---
+  Widget _buildLegendItem(Color color, String label, {bool hasBorder = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            border: hasBorder
+                ? Border.all(color: Colors.white, width: 1.0)
+                : null,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kBackgroundColor,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+    // This is the combined legend logic for the 4 items, now aligned
+    Widget buildLegend() {
+      return Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(height: 60),
-
-              // HEADER
-              Text(
-                widget.sessionName.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
+              // Left column of legends
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: IntrinsicWidth(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                      children: [
+                        _buildLegendItem(_highlyEngagedColor, 'HIGHLY ENGAGED'),
+                        const SizedBox(height: 8),
+                        _buildLegendItem(_engagedColor, 'ENGAGED', hasBorder: true),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-
-              // --- REAL-TIME DATA SECTION ---
-              // This StreamBuilder listens to the database changes 
+              const SizedBox(width: 20), // Space between the two legend columns
+              // Right column of legends
               Expanded(
-                child: StreamBuilder<DocumentSnapshot>(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: IntrinsicWidth(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                      children: [
+                        _buildLegendItem(_barelyEngagedColor, 'BARELY ENGAGED'),
+                        const SizedBox(height: 8),
+                        _buildLegendItem(_notEngagedColor, 'NOT ENGAGED', hasBorder: true),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: kBackgroundColor, // Set background color using kBackgroundColor
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const SizedBox(height: 40),
+
+                // HEADER: CAO: BSCPE 4-1
+                const Text(
+                  'CAO: BSCPE 4-1', // Hardcoded as per the image
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // --- REAL-TIME DATA SECTION (4-Quadrant Grid) ---
+                StreamBuilder<DocumentSnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('sessions')
                       .doc(widget.sessionId)
                       .snapshots(),
                   builder: (context, snapshot) {
+                    // Default values
+                    String highlyEngagedText = "0%";
+                    String barelyEngagedText = "0%";
                     String engagedText = "0%";
                     String notEngagedText = "0%";
 
                     if (snapshot.hasData && snapshot.data!.exists) {
                       var data = snapshot.data!.data() as Map<String, dynamic>;
 
-                      // Check if there is any graph data yet
                       if (data['graph_data'] != null && (data['graph_data'] as List).isNotEmpty) {
                         List<dynamic> graphList = data['graph_data'];
-                        
-                        // Get the VERY LAST item added (the most recent real-time update)
                         var latestPoint = graphList.last;
 
-                        int engaged = (latestPoint['engaged'] as num).toInt();
-                        
-                        // Calculate 'Not Engaged' (either from DB or 100 - engaged)
-                        int notEngaged = latestPoint['not_engaged'] != null 
-                            ? (latestPoint['not_engaged'] as num).toInt() 
-                            : (100 - engaged);
+                        // Assumed structure: Read the four percentages from the latest point
+                        int highlyEngaged = (latestPoint['highly_engaged'] as num?)?.toInt() ?? 0;
+                        int barelyEngaged = (latestPoint['barely_engaged'] as num?)?.toInt() ?? 0;
+                        int engaged = (latestPoint['engaged'] as num?)?.toInt() ?? 0;
+                        int notEngaged = (latestPoint['not_engaged'] as num?)?.toInt() ?? 0;
 
+                        highlyEngagedText = "$highlyEngaged%";
+                        barelyEngagedText = "$barelyEngaged%";
                         engagedText = "$engaged%";
                         notEngagedText = "$notEngaged%";
                       }
@@ -142,127 +255,73 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
 
                     return Column(
                       children: [
-                        // Box 1: Engaged (Red)
-                        _buildEngagementBox(
-                          engagedText,
-                          kAccentColor,
-                          Colors.white,
+                        // Top Row: Highly Engaged & Barely Engaged
+                        Row(
+                          children: [
+                            _buildPercentageTile(context, highlyEngagedText, _highlyEngagedColor, Colors.white),
+                            _buildPercentageTile(context, barelyEngagedText, _barelyEngagedColor, Colors.white),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        
-                        // Box 2: Not Engaged (Grey)
-                        _buildEngagementBox(
-                          notEngagedText,
-                          kLightGreyColor,
-                          kBackgroundColor, // Dark text for contrast
+                        // Bottom Row: Engaged & Not Engaged
+                        Row(
+                          children: [
+                            _buildPercentageTile(context, engagedText, _engagedColor, _darkTextColor),
+                            _buildPercentageTile(context, notEngagedText, _notEngagedColor, _darkTextColor),
+                          ],
                         ),
                       ],
                     );
                   },
                 ),
-              ),
-              // --- END REAL-TIME DATA ---
+                // --- END REAL-TIME DATA ---
 
-              // Duration Timer
-              Text(
-                'Duration: ${_formatDuration(_duration)}',
-                style: const TextStyle(
-                  color: kLightGreyColor,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-              _buildLegend(),
-              const SizedBox(height: 20),
-
-              // Terminate Button
-              Padding(
-                padding: const EdgeInsets.only(bottom: 40.0),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _terminateColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        letterSpacing: 1.0,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: _handleTerminate,
-                    child: const Text('TERMINATE SESSION'),
+                // Duration Timer
+                Text(
+                  'Duration: ${_formatDuration(_duration)}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 18,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+
+                // Legends
+                buildLegend(),
+
+                const SizedBox(height: 32),
+
+                // Terminate Button
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20.0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _terminateButtonColor,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          letterSpacing: 1.0,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: _handleTerminate,
+                      child: const Text('TERMINATE SESSION'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildEngagementBox(String percentage, Color backgroundColor, Color textColor) {
-    return Container(
-      height: 200,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(16.0),
-      ),
-      child: Center(
-        child: Text(
-          percentage,
-          style: TextStyle(
-            color: textColor,
-            fontSize: 80,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLegend() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildLegendItem(kAccentColor, 'ENGAGED'),
-        const SizedBox(width: 24),
-        _buildLegendItem(kLightGreyColor, 'NOT ENGAGED'),
-      ],
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String text) {
-    return Row(
-      children: [
-        Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          text,
-          style: const TextStyle(
-            color: kLightGreyColor,
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.0,
-          ),
-        ),
-      ],
     );
   }
 }
