@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'theme.dart';
 
 class AddSessionScreen extends StatefulWidget {
@@ -27,7 +28,7 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
     }
   }
 
-  void _saveSession() {
+  Future<void> _saveSession() async {
     final sessionName = _sessionNameController.text.trim();
     if (sessionName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -35,12 +36,15 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
       );
       return;
     }
-    // Save logic here (e.g., add to a list, send to backend, etc.)
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Session "$sessionName" saved')),
-    );
-    // Optionally, you can clear the fields or pop the screen
-    // Navigator.pop(context);
+
+    // Save to Firestore
+    await FirebaseFirestore.instance.collection('sessions').add({
+      'name': sessionName,
+      'date': DateTime.now().toIso8601String(),
+      'students': students,
+    });
+
+    Navigator.pop(context); // Go back to previous screen
   }
 
   @override

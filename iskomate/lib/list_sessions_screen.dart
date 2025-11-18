@@ -173,39 +173,46 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                session['date'] ?? 'No Date',
+                                session['date'] != null
+                                  ? session['date'].toString().substring(0, 10) // YYYY-MM-DD
+                                  : 'No Date',
                                 style: const TextStyle(
                                   fontSize: 14,
-                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey,
                                 ),
                               ),
                             ],
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_red_eye, color: Colors.grey),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => SessionInfoScreen(
-                                        session: session,
+                          SizedBox(
+                            height: 36, // Prevents overflow
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove_red_eye, color: Colors.red),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => SessionInfoScreen(
+                                          session: session,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: kAccentColor),
-                                onPressed: () => _onEditSessionPressed(session, id),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _confirmDeleteSession(id),
-                              ),
-                            ],
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.red),
+                                  onPressed: () {
+                                    _onEditSessionPressed(session, id);
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () => _confirmDeleteSession(id),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
