@@ -51,9 +51,9 @@ class ActiveSessionScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          // Chart placeholder
+          // Chart placeholder - increased height
           Container(
-            height: 200,
+            height: 320, // Increased from 200 to 320
             margin: const EdgeInsets.symmetric(horizontal: 12),
             color: Colors.black,
             child: Center(
@@ -63,7 +63,7 @@ class ActiveSessionScreen extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24), // Space between chart and legends
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -98,6 +98,7 @@ class ActiveSessionScreen extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 24), // Add some bottom padding
         ],
       ),
     );
