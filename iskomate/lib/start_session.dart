@@ -77,39 +77,54 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   Future<void> _onStartPressed() async {
     setState(() => _isLoading = true);
 
-    final sessionName = _selectedMode == SessionMode.solo
-        ? (_sessionNameController.text.trim().isEmpty
-            ? 'Session ${DateTime.now().millisecondsSinceEpoch}'
-            : _sessionNameController.text.trim())
-        : (_selectedSessionName ?? '');
+    Widget nextScreen;
+    if (_selectedMode == SessionMode.solo) {
+      // Solo mode: use the entered session name, but DO NOT create a new session in Firestore
+      final sessionName = _sessionNameController.text.trim().isEmpty
+          ? 'Session ${DateTime.now().millisecondsSinceEpoch}'
+          : _sessionNameController.text.trim();
+      nextScreen = SoloSessionScreen(sessionName: sessionName);
+    } else {
+      // Classroom/Online: use the selected session, DO NOT create a new session in Firestore
+      if (_selectedSessionName == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
-    // 1. Create the document in Firebase
-    DocumentReference docRef = await FirebaseFirestore.instance.collection('sessions').add({
-      'name': sessionName,
-      'date': DateTime.now().toString().split(' ')[0], // YYYY-MM-DD
-      'mode': _selectedMode.toString(),
-      'status': 'active',
-      'graph_data': [], // Empty list to start
-    });
+      // Find the session document by name (or better, store the session ID when selecting)
+      final query = await FirebaseFirestore.instance
+          .collection('sessions')
+          .where('name', isEqualTo: _selectedSessionName)
+          .limit(1)
+          .get();
+
+      if (query.docs.isEmpty) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Session not found!')),
+        );
+        return;
+      }
+
+      final sessionDoc = query.docs.first;
+      final sessionId = sessionDoc.id;
+
+      if (_selectedMode == SessionMode.classroom) {
+        nextScreen = ClassroomSessionScreen(
+          sessionName: _selectedSessionName!,
+          sessionId: sessionId,
+        );
+      } else {
+        nextScreen = OnlineSessionScreen(
+          sessionName: _selectedSessionName!,
+          sessionId: sessionId,
+        );
+      }
+    }
 
     setState(() => _isLoading = false);
 
     if (!mounted) return;
-
-    Widget nextScreen;
-    switch (_selectedMode) {
-      case SessionMode.solo:
-        nextScreen = SoloSessionScreen(sessionName: sessionName); // Update Solo later if needed
-        break;
-      case SessionMode.classroom:
-        // 2. Pass the new ID to the active screen
-        nextScreen = ClassroomSessionScreen(sessionName: sessionName, sessionId: docRef.id);
-        break;
-      case SessionMode.online:
-        // 2. Pass the new ID to the active screen
-        nextScreen = OnlineSessionScreen(sessionName: sessionName, sessionId: docRef.id);
-        break;
-    }
 
     Navigator.push(
       context,

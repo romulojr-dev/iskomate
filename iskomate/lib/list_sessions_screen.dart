@@ -59,6 +59,29 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
     );
   }
 
+  void _confirmDeleteSession(String id) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Session'),
+        content: const Text('Are you sure you want to delete this session?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete == true) {
+      await _deleteSession(id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,7 +203,7 @@ class _ListSessionsScreenState extends State<ListSessionsScreen> {
                               ),
                               IconButton(
                                 icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _deleteSession(id),
+                                onPressed: () => _confirmDeleteSession(id),
                               ),
                             ],
                           ),
