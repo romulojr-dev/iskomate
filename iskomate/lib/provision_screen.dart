@@ -212,8 +212,8 @@ class _ProvisionScreenState extends State<ProvisionScreen> {
         const Text(
           '1. Go to your phone\'s WiFi Settings.\n'
           '2. Find and connect to the (hidden) network:\n'
-          '   - SSID: IskoMate-Setup\n'
-          '   - Password: YourSetupPassword\n'
+          '   - SSID: IskoMate\n'
+          '   - Password: qwerty123\n'
           '3. Return to this app and tap "Scan".',
           style: TextStyle(color: Colors.white70, fontSize: 16, height: 1.5),
         ),
