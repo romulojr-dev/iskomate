@@ -1,24 +1,23 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_database/firebase_database.dart'; // Required for Realtime DB
 
 import 'theme.dart';
 import 'start_session.dart';
 
-// --- Define Colors for the 4-Quadrant UI (Based on the image) ---
-// Note: Assuming kBackgroundColor is defined in theme.dart
-const Color _highlyEngagedColor = Color(0xFFB11212); // Deep Red (Top Left)
-const Color _barelyEngagedColor = Color(0xFF8B3A3A); // Darker Red (Top Right)
-const Color _engagedColor = Color(0xFFEBE0D2); // Cream/Beige (Bottom Left)
-const Color _notEngagedColor = Color(0xFFFFFFFF); // White (Bottom Right)
-const Color _terminateButtonColor = Color(0xFFB11212); // Termination button color from the image
-const Color _darkTextColor = Color(0xFF332C2B); // Dark text color for light tiles
-
+// --- Colors (Kept the same) ---
+const Color _highlyEngagedColor = Color(0xFFB11212);
+const Color _barelyEngagedColor = Color(0xFF8B3A3A);
+const Color _engagedColor = Color(0xFFEBE0D2);
+const Color _notEngagedColor = Color(0xFFFFFFFF);
+const Color _terminateButtonColor = Color(0xFFB11212);
+const Color _darkTextColor = Color(0xFF332C2B);
 
 class ClassroomSessionScreen extends StatefulWidget {
   final String sessionName;
-  final String sessionId; // Required to listen to the specific database entry
+  final String sessionId;
 
   const ClassroomSessionScreen({
     super.key,
@@ -33,15 +32,17 @@ class ClassroomSessionScreen extends StatefulWidget {
 class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   Timer? _timer;
   Duration _duration = Duration.zero;
-  final Color _terminateColor = const Color(0xFF8D333C); // Keeping your original terminate color definition
   DateTime? _startTime;
+  
+  // 💡 Reference to Realtime Database where Pi sends data
+  final DatabaseReference _aiRef = FirebaseDatabase.instance.ref('aiResult/engagement_stats');
 
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
-    _startTime = DateTime.now(); // Save when session starts
+    _startTime = DateTime.now(); 
   }
 
   @override
@@ -49,23 +50,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     _timer?.cancel();
     super.dispose();
   }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _duration = Duration(seconds: _duration.inSeconds + 1);
-      });
-    });
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = twoDigits(duration.inHours);
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$hours:$minutes:$seconds";
-  }
-
+  
   void _setSystemUIOverlay() {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -75,28 +60,33 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     ));
   }
 
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_startTime != null) {
+          _duration = DateTime.now().difference(_startTime!);
+        } else {
+          _duration = _duration + const Duration(seconds: 1);
+        }
+      });
+    });
+  }
+
+  String _formatDuration(Duration d) {
+    final hours = d.inHours.toString().padLeft(2, '0');
+    final minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$hours:$minutes:$seconds';
+  }
+
   void _handleTerminate() async {
     _timer?.cancel();
-
-    // Update status to 'ended' in Firebase so the laptop knows to stop
     await FirebaseFirestore.instance
         .collection('sessions')
         .doc(widget.sessionId)
         .update({'status': 'ended'});
-
-    final endTime = DateTime.now();
-    final duration = endTime.difference(_startTime!);
-
-    String formattedDuration = [
-      duration.inHours.toString().padLeft(2, '0'),
-      (duration.inMinutes % 60).toString().padLeft(2, '0'),
-      (duration.inSeconds % 60).toString().padLeft(2, '0'),
-    ].join(':');
-
-    await FirebaseFirestore.instance
-        .collection('sessions')
-        .doc(widget.sessionId) // Use your actual sessionId here
-        .update({'duration': formattedDuration});
 
     if (!mounted) return;
 
@@ -107,17 +97,15 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  // --- Widget for the individual percentage tile (2x2 grid) ---
+  // --- Widget for the individual percentage tile (Unchanged) ---
   Widget _buildPercentageTile(BuildContext context, String percentage, Color color, Color textColor) {
     return Expanded(
       child: Container(
-        // Set height to be roughly square
         height: MediaQuery.of(context).size.width / 2 - 30,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(4),
-          // Add border for light tiles
           border: color == _engagedColor || color == _notEngagedColor
               ? Border.all(color: Colors.white10, width: 1.0)
               : null,
@@ -136,7 +124,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  // --- Widget for a single legend item ---
+  // --- Widget for a single legend item (Unchanged) ---
   Widget _buildLegendItem(Color color, String label, {bool hasBorder = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -163,23 +151,20 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // This is the combined legend logic for the 4 items, now aligned
     Widget buildLegend() {
       return Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Left column of legends
               Expanded(
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: IntrinsicWidth(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLegendItem(_highlyEngagedColor, 'HIGHLY ENGAGED'),
                         const SizedBox(height: 8),
@@ -189,14 +174,13 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 20), // Space between the two legend columns
-              // Right column of legends
+              const SizedBox(width: 20),
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: IntrinsicWidth(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLegendItem(_barelyEngagedColor, 'BARELY ENGAGED'),
                         const SizedBox(height: 8),
@@ -213,7 +197,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     }
 
     return Scaffold(
-      backgroundColor: kBackgroundColor, // Set background color using kBackgroundColor
+      backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -222,10 +206,10 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: 40),
-
-                // HEADER: CAO: BSCPE 4-1
+                
+                // HEADER
                 const Text(
-                  'CAO: BSCPE 4-1', // Hardcoded as per the image
+                  'CAO: BSCPE 4-1',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
@@ -236,64 +220,56 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // --- REAL-TIME DATA SECTION (4-Quadrant Grid) ---
-                StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('sessions')
-                      .doc(widget.sessionId)
-                      .snapshots(),
+                // --- REAL-TIME DATA STREAM ---
+                // This widget listens to Firebase changes automatically
+                StreamBuilder<DatabaseEvent>(
+                  stream: _aiRef.onValue, 
                   builder: (context, snapshot) {
-                    // Default values
-                    String highlyEngagedText = "0%";
-                    String barelyEngagedText = "0%";
-                    String engagedText = "0%";
-                    String notEngagedText = "0%";
+                    
+                    // Default values (0%)
+                    String highly = "0%";
+                    String barely = "0%";
+                    String engaged = "0%";
+                    String notEngaged = "0%";
 
-                    if (snapshot.hasData && snapshot.data!.exists) {
-                      var data = snapshot.data!.data() as Map<String, dynamic>;
-
-                      if (data['graph_data'] != null && (data['graph_data'] as List).isNotEmpty) {
-                        List<dynamic> graphList = data['graph_data'];
-                        var latestPoint = graphList.last;
-
-                        // Assumed structure: Read the four percentages from the latest point
-                        int highlyEngaged = (latestPoint['highly_engaged'] as num?)?.toInt() ?? 0;
-                        int barelyEngaged = (latestPoint['barely_engaged'] as num?)?.toInt() ?? 0;
-                        int engaged = (latestPoint['engaged'] as num?)?.toInt() ?? 0;
-                        int notEngaged = (latestPoint['not_engaged'] as num?)?.toInt() ?? 0;
-
-                        highlyEngagedText = "$highlyEngaged%";
-                        barelyEngagedText = "$barelyEngaged%";
-                        engagedText = "$engaged%";
-                        notEngagedText = "$notEngaged%";
+                    // If we have data from the Pi
+                    if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
+                      try {
+                        final data = Map<String, dynamic>.from(snapshot.data!.snapshot.value as Map);
+                        
+                        // Get values and round them to whole numbers
+                        highly = "${(data['highly_engaged'] ?? 0).round()}%";
+                        barely = "${(data['barely_engaged'] ?? 0).round()}%";
+                        engaged = "${(data['engaged'] ?? 0).round()}%";
+                        notEngaged = "${(data['not_engaged'] ?? 0).round()}%";
+                        
+                      } catch (e) {
+                        debugPrint("Data Parse Error: $e");
                       }
                     }
 
+                    // Build the 4-Quadrant Grid with real values
                     return Column(
                       children: [
-                        // Top Row: Highly Engaged & Barely Engaged
                         Row(
                           children: [
-                            _buildPercentageTile(context, highlyEngagedText, _highlyEngagedColor, Colors.white),
-                            _buildPercentageTile(context, barelyEngagedText, _barelyEngagedColor, Colors.white),
+                            _buildPercentageTile(context, highly, _highlyEngagedColor, Colors.white),
+                            _buildPercentageTile(context, barely, _barelyEngagedColor, Colors.white),
                           ],
                         ),
-                        // Bottom Row: Engaged & Not Engaged
                         Row(
                           children: [
-                            _buildPercentageTile(context, engagedText, _engagedColor, _darkTextColor),
-                            _buildPercentageTile(context, notEngagedText, _notEngagedColor, _darkTextColor),
+                            _buildPercentageTile(context, engaged, _engagedColor, _darkTextColor),
+                            _buildPercentageTile(context, notEngaged, _notEngagedColor, _darkTextColor),
                           ],
                         ),
                       ],
                     );
                   },
                 ),
-                // --- END REAL-TIME DATA ---
+                // --- END STREAM ---
 
                 const SizedBox(height: 24),
-
-                // Duration Timer
                 Text(
                   'Duration: ${_formatDuration(_duration)}',
                   style: const TextStyle(
@@ -302,13 +278,8 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Legends
                 buildLegend(),
-
                 const SizedBox(height: 32),
-
-                // Terminate Button
                 Padding(
                   padding: const EdgeInsets.only(bottom: 20.0),
                   child: SizedBox(

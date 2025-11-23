@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:firebase_database/firebase_database.dart'; // add this import
 
 import 'theme.dart'; // Ensure kBackgroundColor and kLightGreyColor are defined here
 import 'start_session.dart';
@@ -36,6 +37,9 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
   final Color _terminateColor = const Color(0xFF8D333C); 
 
   DateTime? _startTime;
+
+  // Add Realtime DB reference (point to the same path your RasPi writes)
+  final DatabaseReference _aiRef = FirebaseDatabase.instance.ref('aiResult/cv');
 
   @override
   void initState() {
@@ -107,7 +111,7 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     );
   }
 
-  // --- Widget for the individual percentage tile (2x2 grid) ---
+  // Add helper to build the quadrant tiles (same style as classroom)
   Widget _buildPercentageTile(BuildContext context, String percentage, Color color, Color textColor) {
     return Expanded(
       child: Container(

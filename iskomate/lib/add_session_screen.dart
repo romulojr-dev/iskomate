@@ -220,7 +220,7 @@ class _AddSessionScreenState extends State<AddSessionScreen> {
                       _DashTextInputFormatter(),
                     ],
                     keyboardType: TextInputType.text,
-                    style: const TextStyle(
+                    style: const TextStyle( 
                       color: Colors.white,
                       fontStyle: FontStyle.italic,
                     ),
