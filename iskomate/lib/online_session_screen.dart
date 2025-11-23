@@ -1,24 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
-import 'package:firebase_database/firebase_database.dart'; // add this import
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_database/firebase_database.dart'; 
+import 'package:firebase_core/firebase_core.dart'; // Needed for Firebase.app()
 
-import 'theme.dart'; // Ensure kBackgroundColor and kLightGreyColor are defined here
+import 'theme.dart';
 import 'start_session.dart';
 
-// --- Define Colors for the 4-Quadrant UI (Based on the image) ---
-const Color _highlyEngagedColor = Color(0xFFB11212); // Deep Red (Top Left)
-const Color _barelyEngagedColor = Color(0xFF8B3A3A); // Darker Red (Top Right)
-const Color _engagedColor = Color(0xFFEBE0D2); // Cream/Beige (Bottom Left)
-const Color _notEngagedColor = Color(0xFFFFFFFF); // White (Bottom Right)
-const Color _terminateButtonColor = Color(0xFFB11212); // Termination button color from the image
-const Color _darkTextColor = Color(0xFF332C2B); // Dark text color for light tiles
-
+// --- Define Colors ---
+const Color _highlyEngagedColor = Color(0xFFB11212);
+const Color _barelyEngagedColor = Color(0xFF8B3A3A);
+const Color _engagedColor = Color(0xFFEBE0D2);
+const Color _notEngagedColor = Color(0xFFFFFFFF);
+const Color _terminateButtonColor = Color(0xFFB11212);
+const Color _darkTextColor = Color(0xFF332C2B);
 
 class OnlineSessionScreen extends StatefulWidget {
   final String sessionName;
-  final String sessionId; // Required to listen to the specific database entry
+  final String sessionId;
 
   const OnlineSessionScreen({
     super.key,
@@ -33,30 +33,124 @@ class OnlineSessionScreen extends StatefulWidget {
 class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
   Timer? _timer;
   Duration _duration = Duration.zero;
-  // Keep this for consistency if _terminateColor is distinct from _terminateButtonColor
-  final Color _terminateColor = const Color(0xFF8D333C); 
-
   DateTime? _startTime;
 
-  // Add Realtime DB reference (point to the same path your RasPi writes)
-  final DatabaseReference _aiRef = FirebaseDatabase.instance.ref('aiResult/cv');
+  // 1. Stream Subscription for Realtime Data
+  StreamSubscription<DatabaseEvent>? _statsSub;
+
+  // 2. Local State for UI (The Percentages)
+  String _highlyText = "0%";
+  String _barelyText = "0%";
+  String _engagedText = "0%";
+  String _notText = "0%";
+
+  // 3. Variables for Saving Graph History
+  int _lastSavedSecond = 0;
+  final int _saveInterval = 5; // Save to Firestore every 5 seconds
 
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
-    _startTime = DateTime.now(); // Save when session starts
+    _startTime = DateTime.now(); 
+    
+    // Start listening to the Raspberry Pi data
+    _initRealtimeListener();
+  }
+
+  void _initRealtimeListener() {
+    // Connect explicitly to the Asia Database
+    final database = FirebaseDatabase.instanceFor(
+      app: Firebase.app(), 
+      databaseURL: 'https://iskomate-f149c-default-rtdb.asia-southeast1.firebasedatabase.app/'
+    );
+    
+    // Listen to the correct path
+    _statsSub = database.ref('aiResult/engagement_stats').onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        try {
+          final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+
+          // Helper to safely parse numbers
+          double getVal(dynamic val) {
+             if (val == null) return 0.0;
+             if (val is int) return val.toDouble();
+             if (val is double) return val;
+             return double.tryParse(val.toString()) ?? 0.0;
+          }
+
+          double highly = getVal(data['highly_engaged']);
+          double barely = getVal(data['barely_engaged']);
+          double engaged = getVal(data['engaged']);
+          double not = getVal(data['not_engaged']);
+
+          // Update the Screen
+          if (mounted) {
+            setState(() {
+              _highlyText = "${highly.round()}%";
+              _barelyText = "${barely.round()}%";
+              _engagedText = "${engaged.round()}%";
+              _notText = "${not.round()}%";
+            });
+          }
+
+          // Save to Firestore for the Graph
+          _saveToGraph(highly, barely, engaged, not);
+
+        } catch (e) {
+          debugPrint("❌ PARSING ERROR: $e");
+        }
+      }
+    });
+  }
+
+  // Logic to save history for ViewSessionScreen graph
+  void _saveToGraph(double h, double b, double e, double n) async {
+    final currentSecond = _duration.inSeconds;
+
+    // Throttling: Only save every few seconds to save bandwidth
+    if (currentSecond - _lastSavedSecond >= _saveInterval) {
+      _lastSavedSecond = currentSecond;
+
+      final graphPoint = {
+        "time_index": currentSecond,
+        "highly_engaged": h,
+        "barely_engaged": b,
+        "engaged": e,
+        "not_engaged": n,
+      };
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('sessions')
+            .doc(widget.sessionId)
+            .update({
+          "graph_data": FieldValue.arrayUnion([graphPoint]),
+          // Also update current values for the list preview
+          "engagement": {
+            "highly_engaged": h,
+            "barely_engaged": b,
+            "engaged": e,
+            "not_engaged": n,
+          }
+        });
+      } catch (error) {
+        debugPrint("⚠️ Graph save error: $error");
+      }
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _statsSub?.cancel(); // Stop listening when we leave
     super.dispose();
   }
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
       setState(() {
         _duration = Duration(seconds: _duration.inSeconds + 1);
       });
@@ -75,7 +169,6 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      // Ensure this is using your kBackgroundColor from theme.dart
       systemNavigationBarColor: kBackgroundColor, 
       systemNavigationBarIconBrightness: Brightness.light,
     ));
@@ -83,23 +176,17 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
 
   void _handleTerminate() async {
     _timer?.cancel();
+    _statsSub?.cancel(); // Stop recording
 
     final endTime = DateTime.now();
-    final duration = endTime.difference(_startTime!);
-
-    String formattedDuration = [
-      duration.inHours.toString().padLeft(2, '0'),
-      (duration.inMinutes % 60).toString().padLeft(2, '0'),
-      (duration.inSeconds % 60).toString().padLeft(2, '0'),
-    ].join(':');
-
-    // Update status to 'ended'
+    
     await FirebaseFirestore.instance
         .collection('sessions')
         .doc(widget.sessionId)
         .update({
           'status': 'ended',
-          'duration': formattedDuration
+          'duration': _formatDuration(_duration),
+          'ended_at': endTime.toIso8601String(),
         });
 
     if (!mounted) return;
@@ -111,17 +198,15 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     );
   }
 
-  // Add helper to build the quadrant tiles (same style as classroom)
+  // --- Widget for the percentage tile ---
   Widget _buildPercentageTile(BuildContext context, String percentage, Color color, Color textColor) {
     return Expanded(
       child: Container(
-        // Set height to be roughly square
         height: MediaQuery.of(context).size.width / 2 - 30,
         margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(4),
-          // Add border for light tiles
           border: color == _engagedColor || color == _notEngagedColor
               ? Border.all(color: Colors.white10, width: 1.0)
               : null,
@@ -169,20 +254,18 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // This is the combined legend logic for the 4 items, now aligned
     Widget buildLegend() {
       return Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Left column of legends
               Expanded(
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: IntrinsicWidth(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLegendItem(_highlyEngagedColor, 'HIGHLY ENGAGED'),
                         const SizedBox(height: 8),
@@ -192,14 +275,13 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 20), // Space between the two legend columns
-              // Right column of legends
+              const SizedBox(width: 20),
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: IntrinsicWidth(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, // Align text to the start
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLegendItem(_barelyEngagedColor, 'BARELY ENGAGED'),
                         const SizedBox(height: 8),
@@ -216,7 +298,7 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
     }
 
     return Scaffold(
-      backgroundColor: kBackgroundColor, // Set background color using kBackgroundColor
+      backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -228,7 +310,7 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
 
                 // HEADER: CAO: BSCPE 4-1
                 const Text(
-                  'CAO: BSCPE 4-1', // Hardcoded as per the image
+                  'CAO: BSCPE 4-1', 
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
@@ -240,57 +322,23 @@ class _OnlineSessionScreenState extends State<OnlineSessionScreen> {
                 const SizedBox(height: 24),
 
                 // --- REAL-TIME DATA SECTION (4-Quadrant Grid) ---
-                StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('sessions')
-                      .doc(widget.sessionId)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    // Default values
-                    String highlyEngagedText = "0%";
-                    String barelyEngagedText = "0%";
-                    String engagedText = "0%";
-                    String notEngagedText = "0%";
-
-                    if (snapshot.hasData && snapshot.data!.exists) {
-                      var data = snapshot.data!.data() as Map<String, dynamic>;
-
-                      if (data['graph_data'] != null && (data['graph_data'] as List).isNotEmpty) {
-                        List<dynamic> graphList = data['graph_data'];
-                        var latestPoint = graphList.last;
-
-                        // Assumed structure: Read the four percentages from the latest point
-                        int highlyEngaged = (latestPoint['highly_engaged'] as num?)?.toInt() ?? 0;
-                        int barelyEngaged = (latestPoint['barely_engaged'] as num?)?.toInt() ?? 0;
-                        int engaged = (latestPoint['engaged'] as num?)?.toInt() ?? 0;
-                        int notEngaged = (latestPoint['not_engaged'] as num?)?.toInt() ?? 0;
-
-                        highlyEngagedText = "$highlyEngaged%";
-                        barelyEngagedText = "$barelyEngaged%";
-                        engagedText = "$engaged%";
-                        notEngagedText = "$notEngaged%";
-                      }
-                    }
-
-                    return Column(
+                Column(
+                  children: [
+                    // Top Row
+                    Row(
                       children: [
-                        // Top Row: Highly Engaged & Barely Engaged
-                        Row(
-                          children: [
-                            _buildPercentageTile(context, highlyEngagedText, _highlyEngagedColor, Colors.white),
-                            _buildPercentageTile(context, barelyEngagedText, _barelyEngagedColor, Colors.white),
-                          ],
-                        ),
-                        // Bottom Row: Engaged & Not Engaged
-                        Row(
-                          children: [
-                            _buildPercentageTile(context, engagedText, _engagedColor, _darkTextColor),
-                            _buildPercentageTile(context, notEngagedText, _notEngagedColor, _darkTextColor),
-                          ],
-                        ),
+                        _buildPercentageTile(context, _highlyText, _highlyEngagedColor, Colors.white),
+                        _buildPercentageTile(context, _barelyText, _barelyEngagedColor, Colors.white),
                       ],
-                    );
-                  },
+                    ),
+                    // Bottom Row
+                    Row(
+                      children: [
+                        _buildPercentageTile(context, _engagedText, _engagedColor, _darkTextColor),
+                        _buildPercentageTile(context, _notText, _notEngagedColor, _darkTextColor),
+                      ],
+                    ),
+                  ],
                 ),
                 // --- END REAL-TIME DATA ---
 
