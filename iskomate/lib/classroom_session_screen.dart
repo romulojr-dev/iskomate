@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:firebase_database/firebase_database.dart'; 
-import 'package:firebase_core/firebase_core.dart'; // Needed for Firebase.app()
+import 'package:firebase_core/firebase_core.dart'; 
 
 import 'theme.dart';
 import 'start_session.dart';
@@ -35,8 +35,18 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   Duration _duration = Duration.zero;
   DateTime? _startTime;
   
-  // Stream to listen to the Realtime Database
-  late final Stream<DatabaseEvent> _statsStream;
+  // Stream Subscription to handle data and saving logic
+  StreamSubscription<DatabaseEvent>? _statsSub;
+
+  // Local state for UI
+  String _highlyText = "0%";
+  String _barelyText = "0%";
+  String _engagedText = "0%";
+  String _notText = "0%";
+
+  // Variables for Graph Saving
+  int _lastSavedSecond = 0;
+  final int _saveInterval = 5; // Save to graph every 5 seconds
 
   @override
   void initState() {
@@ -45,20 +55,98 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     _startTimer();
     _startTime = DateTime.now(); 
     
-    // 💡 CRITICAL FIX: Connect specifically to your Asia-Southeast1 Database
-    // This bypasses the "default" US region and forces it to look in Singapore
+    _initRealtimeListener();
+  }
+
+  void _initRealtimeListener() {
+    // 1. Connect to Asia Database
     final database = FirebaseDatabase.instanceFor(
       app: Firebase.app(), 
       databaseURL: 'https://iskomate-f149c-default-rtdb.asia-southeast1.firebasedatabase.app/'
     );
     
-    // Create the reference and the stream ONCE
-    _statsStream = database.ref('aiResult/engagement_stats').onValue;
+    // 2. Listen to the stream
+    _statsSub = database.ref('aiResult/engagement_stats').onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        try {
+          final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+
+          // Helper to get double values safely
+          double getVal(dynamic val) {
+             if (val == null) return 0.0;
+             if (val is int) return val.toDouble();
+             if (val is double) return val;
+             return double.tryParse(val.toString()) ?? 0.0;
+          }
+
+          double highly = getVal(data['highly_engaged']);
+          double barely = getVal(data['barely_engaged']);
+          double engaged = getVal(data['engaged']);
+          double not = getVal(data['not_engaged']);
+
+          // 3. Update UI (setState is safe here)
+          if (mounted) {
+            setState(() {
+              _highlyText = "${highly.round()}%";
+              _barelyText = "${barely.round()}%";
+              _engagedText = "${engaged.round()}%";
+              _notText = "${not.round()}%";
+            });
+          }
+
+          // 4. Save to Firestore Graph (Throttled)
+          _saveToGraph(highly, barely, engaged, not);
+
+        } catch (e) {
+          debugPrint("❌ PARSING ERROR: $e");
+        }
+      }
+    });
+  }
+
+  // 💡 This function saves points for the graph
+  void _saveToGraph(double h, double b, double e, double n) async {
+    final currentSecond = _duration.inSeconds;
+
+    // Only save if enough time has passed (e.g., every 5 seconds)
+    if (currentSecond - _lastSavedSecond >= _saveInterval) {
+      _lastSavedSecond = currentSecond;
+
+      // Create the graph point
+      final graphPoint = {
+        "time_index": currentSecond, // X-Axis
+        "highly_engaged": h,
+        "barely_engaged": b,
+        "engaged": e,
+        "not_engaged": n,
+      };
+
+      // Append to Firestore 'graph_data' array
+      try {
+        await FirebaseFirestore.instance
+            .collection('sessions')
+            .doc(widget.sessionId)
+            .update({
+          "graph_data": FieldValue.arrayUnion([graphPoint]),
+          // Also update current snapshot for session list previews
+          "engagement": {
+            "highly_engaged": h,
+            "barely_engaged": b,
+            "engaged": e,
+            "not_engaged": n,
+          }
+        });
+        debugPrint("📈 Graph point saved at ${currentSecond}s");
+      } catch (error) {
+        debugPrint("⚠️ Failed to save graph point: $error");
+      }
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _statsSub?.cancel(); // Important: Stop listening when screen closes
     super.dispose();
   }
   
@@ -94,6 +182,8 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
 
   void _handleTerminate() async {
     _timer?.cancel();
+    _statsSub?.cancel(); // Stop recording
+
     final endTime = DateTime.now();
     String formattedDuration = _formatDuration(_duration);
 
@@ -236,70 +326,24 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // 💡 STREAM BUILDER: Listens to your Asia DB
-                StreamBuilder<DatabaseEvent>(
-                  stream: _statsStream, 
-                  builder: (context, snapshot) {
-                    
-                    String highlyText = "0%";
-                    String barelyText = "0%";
-                    String engagedText = "0%";
-                    String notText = "0%";
-
-                    // Print error if connection fails
-                    if (snapshot.hasError) {
-                       debugPrint("❌ STREAM ERROR: ${snapshot.error}");
-                    }
-
-                    // If data exists, parse it
-                    if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
-                      try {
-                        // Debug log to confirm data arrival in Terminal
-                        final rawValue = snapshot.data!.snapshot.value;
-                        debugPrint("✅ DATA ARRIVED: $rawValue");
-
-                        final data = Map<dynamic, dynamic>.from(rawValue as Map);
-                        
-                        // Robust Number Parsing Helper
-                        double getVal(dynamic val) {
-                           if (val == null) return 0.0;
-                           if (val is int) return val.toDouble();
-                           if (val is double) return val;
-                           return double.tryParse(val.toString()) ?? 0.0;
-                        }
-
-                        highlyText = "${getVal(data['highly_engaged']).round()}%";
-                        barelyText = "${getVal(data['barely_engaged']).round()}%";
-                        engagedText = "${getVal(data['engaged']).round()}%";
-                        notText = "${getVal(data['not_engaged']).round()}%";
-
-                      } catch (e) {
-                        debugPrint("❌ PARSING ERROR: $e");
-                      }
-                    } else {
-                        debugPrint("⚠️ WAITING FOR DATA...");
-                    }
-
-                    return Column(
+                // 4-Quadrant Grid (Uses local state variables updated by listener)
+                Column(
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            _buildPercentageTile(context, highlyText, _highlyEngagedColor, Colors.white),
-                            _buildPercentageTile(context, barelyText, _barelyEngagedColor, Colors.white),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            _buildPercentageTile(context, engagedText, _engagedColor, _darkTextColor),
-                            _buildPercentageTile(context, notText, _notEngagedColor, _darkTextColor),
-                          ],
-                        ),
+                        _buildPercentageTile(context, _highlyText, _highlyEngagedColor, Colors.white),
+                        _buildPercentageTile(context, _barelyText, _barelyEngagedColor, Colors.white),
                       ],
-                    );
-                  },
+                    ),
+                    Row(
+                      children: [
+                        _buildPercentageTile(context, _engagedText, _engagedColor, _darkTextColor),
+                        _buildPercentageTile(context, _notText, _notEngagedColor, _darkTextColor),
+                      ],
+                    ),
+                  ],
                 ),
-                // --- END STREAM ---
-
+                
                 const SizedBox(height: 24),
                 Text(
                   'Duration: ${_formatDuration(_duration)}',
@@ -311,6 +355,8 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                 const SizedBox(height: 24),
                 buildLegend(),
                 const SizedBox(height: 32),
+                
+                // Terminate Button
                 Padding(
                   padding: const EdgeInsets.only(bottom: 20.0),
                   child: SizedBox(
