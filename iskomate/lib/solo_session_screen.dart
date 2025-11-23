@@ -1,14 +1,13 @@
-// solo_session_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Required for SystemChrome
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_database/firebase_database.dart'; 
+import 'package:firebase_core/firebase_core.dart'; // Needed for Firebase.app()
 
-// Internal imports matching your project structure
 import 'theme.dart';
-import 'start_session.dart'; // Import the start_session.dart file
+import 'start_session.dart';
 
-// STEP 1: Convert StatelessWidget to StatefulWidget
 class SoloSessionScreen extends StatefulWidget {
   final String sessionName;
   final String sessionId;
@@ -23,34 +22,114 @@ class SoloSessionScreen extends StatefulWidget {
   State<SoloSessionScreen> createState() => _SoloSessionScreenState();
 }
 
-// STEP 2: Create the State Class to hold the timer logic and duration
 class _SoloSessionScreenState extends State<SoloSessionScreen> {
-  // Timer variables moved into the State class
   Timer? _timer;
   Duration _duration = Duration.zero;
-  DateTime? _startTime; // Track when the session starts
+  DateTime? _startTime; 
 
-  // STEP 3: Initialize Timer and System UI
+  // 1. Background Stream Subscription (No UI variables needed since we hide them)
+  StreamSubscription<DatabaseEvent>? _statsSub;
+
+  // 2. Variables for Saving Graph History
+  int _lastSavedSecond = 0;
+  final int _saveInterval = 5; // Save to Firestore every 5 seconds
+
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
-    _startTime = DateTime.now(); // Save when session starts
+    _startTime = DateTime.now();
+    
+    // Start collecting data for the graph (Invisible to user)
+    _initRealtimeListener();
   }
 
-  // STEP 4: Cancel Timer when the widget is closed
+  void _initRealtimeListener() {
+    // Connect explicitly to the Asia Database
+    final database = FirebaseDatabase.instanceFor(
+      app: Firebase.app(), 
+      databaseURL: 'https://iskomate-f149c-default-rtdb.asia-southeast1.firebasedatabase.app/'
+    );
+    
+    // Listen to the data path
+    _statsSub = database.ref('aiResult/engagement_stats').onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        try {
+          final data = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
+
+          // Helper to safely parse numbers
+          double getVal(dynamic val) {
+             if (val == null) return 0.0;
+             if (val is int) return val.toDouble();
+             if (val is double) return val;
+             return double.tryParse(val.toString()) ?? 0.0;
+          }
+
+          double highly = getVal(data['highly_engaged']);
+          double barely = getVal(data['barely_engaged']);
+          double engaged = getVal(data['engaged']);
+          double not = getVal(data['not_engaged']);
+
+          // We DO NOT call setState here because we aren't updating the UI.
+          // We just silently save the data for the graph.
+          _saveToGraph(highly, barely, engaged, not);
+
+        } catch (e) {
+          debugPrint("❌ PARSING ERROR: $e");
+        }
+      }
+    });
+  }
+
+  // Logic to save history for ViewSessionScreen graph
+  void _saveToGraph(double h, double b, double e, double n) async {
+    final currentSecond = _duration.inSeconds;
+
+    // Throttling: Only save every 5 seconds
+    if (currentSecond - _lastSavedSecond >= _saveInterval) {
+      _lastSavedSecond = currentSecond;
+
+      final graphPoint = {
+        "time_index": currentSecond,
+        "highly_engaged": h,
+        "barely_engaged": b,
+        "engaged": e,
+        "not_engaged": n,
+      };
+
+      try {
+        await FirebaseFirestore.instance
+            .collection('sessions')
+            .doc(widget.sessionId)
+            .update({
+          "graph_data": FieldValue.arrayUnion([graphPoint]),
+          // We also update the "current" state, even if not shown here, 
+          // so the session list shows the last known state.
+          "engagement": {
+            "highly_engaged": h,
+            "barely_engaged": b,
+            "engaged": e,
+            "not_engaged": n,
+          }
+        });
+        // debugPrint("Background Graph Point Saved: $currentSecond");
+      } catch (error) {
+        debugPrint("⚠️ Graph save error: $error");
+      }
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _statsSub?.cancel(); // Important: Stop listening
     super.dispose();
   }
 
-  // Function to start the periodic timer
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) { // Ensure widget is still active before calling setState
-        // STEP 5: Call setState() to trigger UI update
+      if (mounted) {
         setState(() {
           _duration = Duration(seconds: _duration.inSeconds + 1);
         });
@@ -58,7 +137,6 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
     });
   }
 
-  // Helper to format duration to HH:MM:SS
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = twoDigits(duration.inHours);
@@ -76,9 +154,23 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
     ));
   }
 
-  void _handleTerminate() {
+  void _terminateSession() async {
     _timer?.cancel();
-    // Navigate back to the setup screen
+    _statsSub?.cancel(); // Stop recording
+
+    final endTime = DateTime.now();
+    
+    await FirebaseFirestore.instance
+        .collection('sessions')
+        .doc(widget.sessionId) 
+        .update({
+          'status': 'ended',
+          'duration': _formatDuration(_duration),
+          'ended_at': endTime.toIso8601String(),
+        });
+
+    if (!mounted) return;
+
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const SessionSetupScreen()),
@@ -86,42 +178,23 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
     );
   }
 
-  void _terminateSession() async {
-    final endTime = DateTime.now();
-    final duration = endTime.difference(_startTime!);
-
-    String formattedDuration = [
-      duration.inHours.toString().padLeft(2, '0'),
-      (duration.inMinutes % 60).toString().padLeft(2, '0'),
-      (duration.inSeconds % 60).toString().padLeft(2, '0'),
-    ].join(':');
-
-    await FirebaseFirestore.instance
-        .collection('sessions')
-        .doc(widget.sessionId) // Use the sessionId from the widget
-        .update({'duration': formattedDuration});
-
-    Navigator.pop(context); // Or whatever you do to end the session
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Get the formatted time string (will update on every setState call)
     final String formattedDuration = _formatDuration(_duration);
 
     return Scaffold(
-      backgroundColor: kBackgroundColor, // Matches previous page background
+      backgroundColor: kBackgroundColor,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0), // Add side padding
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 60), // Increased height to lower the Session Name down a bit
+              const SizedBox(height: 60),
 
               // SESSION NAME Header
               Text(
-                widget.sessionName.toUpperCase(), // Use widget.sessionName in the State class
+                widget.sessionName.toUpperCase(),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
@@ -131,7 +204,7 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
                 ),
               ),
 
-              const Spacer(), // Pushes timer to the visual middle
+              const Spacer(),
 
               // Duration Label
               const Text(
@@ -145,9 +218,9 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
               ),
               const SizedBox(height: 10),
 
-              // Timer Display (Now dynamic)
+              // Timer Display
               Text(
-                formattedDuration, // Use the state variable
+                formattedDuration,
                 style: const TextStyle(
                   color: kLightGreyColor,
                   fontSize: 80,
@@ -156,19 +229,19 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
                 ),
               ),
 
-              const Spacer(), // Pushes button to the bottom
+              const Spacer(),
 
               // TERMINATE SESSION Button
               Padding(
-                padding: const EdgeInsets.only(bottom: 40.0), // Bottom spacing
+                padding: const EdgeInsets.only(bottom: 40.0),
                 child: SizedBox(
-                  width: double.infinity, // Makes button full width
-                  height: 55, // Slightly taller button
+                  width: double.infinity,
+                  height: 55,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: kAccentColor, // Use the app's accent color
+                      backgroundColor: kAccentColor, 
                       foregroundColor: Colors.white,
-                      elevation: 0, // Flat design
+                      elevation: 0,
                       textStyle: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
@@ -178,9 +251,7 @@ class _SoloSessionScreenState extends State<SoloSessionScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    onPressed: () {
-                      _terminateSession(); // Call the new terminate function
-                    },
+                    onPressed: _terminateSession,
                     child: const Text('TERMINATE SESSION'),
                   ),
                 ),
