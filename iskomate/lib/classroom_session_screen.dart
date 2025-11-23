@@ -37,17 +37,79 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   // 💡 Reference to Realtime Database where Pi sends data
   final DatabaseReference _aiRef = FirebaseDatabase.instance.ref('aiResult/engagement_stats');
 
+  // --- ADDED: cached percentage strings + numeric values + subscription
+  String _highlyPct = '0%';
+  String _barelyPct  = '0%';
+  String _engagedPct = '0%';
+  String _notPct     = '0%';
+  double _highlyVal = 0.0;
+  double _barelyVal = 0.0;
+  double _engagedVal = 0.0;
+  double _notVal = 0.0;
+  StreamSubscription<DatabaseEvent>? _aiSub;
+
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
-    _startTime = DateTime.now(); 
+    _startTime = DateTime.now();
+
+    // ADDED: listen RTDB, update UI and Firestore (merge)
+    _aiSub = _aiRef.onValue.listen((DatabaseEvent event) {
+      final raw = event.snapshot.value;
+      debugPrint('RTDB event raw: $raw');
+      if (raw != null && raw is Map) {
+        double toDouble(dynamic v) {
+          if (v == null) return 0.0;
+          if (v is num) return v.toDouble();
+          return double.tryParse(v.toString()) ?? 0.0;
+        }
+
+        final he = toDouble(raw['highly_engaged']);
+        final be = toDouble(raw['barely_engaged']);
+        final e  = toDouble(raw['engaged']);
+        final ne = toDouble(raw['not_engaged']);
+
+        setState(() {
+          _highlyVal = he;
+          _barelyVal = be;
+          _engagedVal = e;
+          _notVal = ne;
+          _highlyPct = '${he.round()}%';
+          _barelyPct = '${be.round()}%';
+          _engagedPct = '${e.round()}%';
+          _notPct = '${ne.round()}%';
+        });
+
+        // write engagement snapshot into the session document (merge so it doesn't overwrite other fields)
+        FirebaseFirestore.instance
+            .collection('sessions')
+            .doc(widget.sessionId)
+            .set({
+              'engagement': {
+                'highly_engaged': he,
+                'barely_engaged': be,
+                'engaged': e,
+                'not_engaged': ne,
+              },
+              'last_update': DateTime.now().toIso8601String(),
+              'status': 'ongoing',
+            }, SetOptions(merge: true)).catchError((err) {
+              debugPrint('Firestore write error: $err');
+            });
+      } else {
+        debugPrint('RTDB payload null or not a Map');
+      }
+    }, onError: (err) {
+      debugPrint('RTDB listen error: $err');
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _aiSub?.cancel(); // ADDED
     super.dispose();
   }
   
@@ -83,10 +145,30 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
 
   void _handleTerminate() async {
     _timer?.cancel();
+
+    // compute formatted duration and save to Firestore along with final engagement snapshot
+    final endTime = DateTime.now();
+    final duration = endTime.difference(_startTime ?? endTime);
+    String formattedDuration = [
+      duration.inHours.toString().padLeft(2, '0'),
+      (duration.inMinutes % 60).toString().padLeft(2, '0'),
+      (duration.inSeconds % 60).toString().padLeft(2, '0'),
+    ].join(':');
+
     await FirebaseFirestore.instance
         .collection('sessions')
         .doc(widget.sessionId)
-        .update({'status': 'ended'});
+        .set({
+          'status': 'ended',
+          'duration': formattedDuration,
+          'engagement': {
+            'highly_engaged': _highlyVal,
+            'barely_engaged': _barelyVal,
+            'engaged': _engagedVal,
+            'not_engaged': _notVal,
+          },
+          'ended_at': endTime.toIso8601String(),
+        }, SetOptions(merge: true));
 
     if (!mounted) return;
 
@@ -207,11 +289,11 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
               children: [
                 const SizedBox(height: 40),
                 
-                // HEADER
-                const Text(
-                  'CAO: BSCPE 4-1',
+                // HEADER - show the session name passed from start screen
+                Text(
+                  widget.sessionName,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -221,51 +303,22 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                 const SizedBox(height: 24),
 
                 // --- REAL-TIME DATA STREAM ---
-                // This widget listens to Firebase changes automatically
-                StreamBuilder<DatabaseEvent>(
-                  stream: _aiRef.onValue, 
-                  builder: (context, snapshot) {
-                    
-                    // Default values (0%)
-                    String highly = "0%";
-                    String barely = "0%";
-                    String engaged = "0%";
-                    String notEngaged = "0%";
-
-                    // If we have data from the Pi
-                    if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
-                      try {
-                        final data = Map<String, dynamic>.from(snapshot.data!.snapshot.value as Map);
-                        
-                        // Get values and round them to whole numbers
-                        highly = "${(data['highly_engaged'] ?? 0).round()}%";
-                        barely = "${(data['barely_engaged'] ?? 0).round()}%";
-                        engaged = "${(data['engaged'] ?? 0).round()}%";
-                        notEngaged = "${(data['not_engaged'] ?? 0).round()}%";
-                        
-                      } catch (e) {
-                        debugPrint("Data Parse Error: $e");
-                      }
-                    }
-
-                    // Build the 4-Quadrant Grid with real values
-                    return Column(
+                // REPLACED StreamBuilder with cached values driven by listener
+                Column(
+                  children: [
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            _buildPercentageTile(context, highly, _highlyEngagedColor, Colors.white),
-                            _buildPercentageTile(context, barely, _barelyEngagedColor, Colors.white),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            _buildPercentageTile(context, engaged, _engagedColor, _darkTextColor),
-                            _buildPercentageTile(context, notEngaged, _notEngagedColor, _darkTextColor),
-                          ],
-                        ),
+                        _buildPercentageTile(context, _highlyPct, _highlyEngagedColor, Colors.white),
+                        _buildPercentageTile(context, _barelyPct, _barelyEngagedColor, Colors.white),
                       ],
-                    );
-                  },
+                    ),
+                    Row(
+                      children: [
+                        _buildPercentageTile(context, _engagedPct, _engagedColor, _darkTextColor),
+                        _buildPercentageTile(context, _notPct, _notEngagedColor, _darkTextColor),
+                      ],
+                    ),
+                  ],
                 ),
                 // --- END STREAM ---
 
