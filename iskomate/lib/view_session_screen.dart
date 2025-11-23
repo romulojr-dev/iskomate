@@ -297,12 +297,98 @@ class _ViewSessionScreenState extends State<ViewSessionScreen> {
                   const SizedBox(height: 40),
 
                   // 3. The Chart Widget
-                  SizedBox(
-                    height: 300,
-                    child: LineChart(
-                      _buildChartData(highlyEngagedSpots, barelyEngagedSpots, engagedSpots, notEngagedSpots),
-                      duration: const Duration(milliseconds: 250), 
-                    ),
+                  StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance.collection('sessions').doc(widget.sessionId).snapshots(),
+                    builder: (context, snap) {
+                      if (snap.hasError) {
+                        return const SizedBox(height: 220, child: Center(child: Text('Error loading graph', style: TextStyle(color: Colors.white))));
+                      }
+                      if (!snap.hasData || snap.data!.data() == null) {
+                        return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
+                      }
+
+                      final doc = snap.data!.data()!;
+                      debugPrint('VIEW_SESSION: session doc raw => $doc');
+
+                      final rawGraph = doc['graph_data'];
+                      final points = <Map<String, dynamic>>[];
+                      if (rawGraph is List) {
+                        for (var e in rawGraph) {
+                          if (e is Map) points.add(Map<String, dynamic>.from(e));
+                        }
+                      }
+
+                      debugPrint('VIEW_SESSION: graph_data count=${points.length}');
+
+                      double _toDouble(dynamic v) {
+                        if (v == null) return 0.0;
+                        if (v is num) return v.toDouble();
+                        return double.tryParse(v.toString()) ?? 0.0;
+                      }
+
+                      final spotsH = <FlSpot>[];
+                      final spotsB = <FlSpot>[];
+                      final spotsE = <FlSpot>[];
+                      final spotsN = <FlSpot>[];
+
+                      if (points.isNotEmpty) {
+                        // use index as X so lines are visible immediately
+                        for (var i = 0; i < points.length; i++) {
+                          final p = points[i];
+                          final x = i.toDouble();
+                          spotsH.add(FlSpot(x, _toDouble(p['highly_engaged'])));
+                          spotsB.add(FlSpot(x, _toDouble(p['barely_engaged'])));
+                          spotsE.add(FlSpot(x, _toDouble(p['engaged'])));
+                          spotsN.add(FlSpot(x, _toDouble(p['not_engaged'])));
+                        }
+                      } else {
+                        // single empty point so chart draws consistent axes
+                        spotsH.add(const FlSpot(0, 0));
+                      }
+
+                      final all = [...spotsH, ...spotsB, ...spotsE, ...spotsN];
+                      double minX = 0, maxX = all.isNotEmpty ? all.map((s) => s.x).reduce((a,b)=> a<b?a:b) : 0;
+                      if (all.isNotEmpty) {
+                        minX = all.map((s) => s.x).reduce((a,b)=> a<b?a:b);
+                        maxX = all.map((s) => s.x).reduce((a,b)=> a>b?a:b);
+                        if (minX == maxX) maxX = minX + 1;
+                      } else {
+                        maxX = 1;
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Text('Duration: ${doc['duration'] ?? '00:00:00'}', style: const TextStyle(color: Colors.white70, fontSize: 16)),
+                          ),
+                          SizedBox(
+                            height: 260,
+                            child: LineChart(
+                              LineChartData(
+                                gridData: FlGridData(show: true, horizontalInterval: 25),
+                                titlesData: FlTitlesData(
+                                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: 25, getTitlesWidget: (v, meta) => Text('${v.toInt()}%', style: const TextStyle(color: Colors.white70, fontSize: 12)))),
+                                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, interval: (maxX - minX) / 4, getTitlesWidget: (v, meta) => Text(v.toInt().toString(), style: const TextStyle(color: Colors.white70, fontSize: 12)))),
+                                ),
+                                minX: minX,
+                                maxX: maxX,
+                                minY: 0,
+                                maxY: 100,
+                                lineBarsData: [
+                                  LineChartBarData(spots: spotsH, isCurved: true, color: const Color(0xFFB11212), barWidth: 2, dotData: FlDotData(show: false)),
+                                  LineChartBarData(spots: spotsE, isCurved: true, color: const Color(0xFFEBE0D2), barWidth: 2, dotData: FlDotData(show: false)),
+                                  LineChartBarData(spots: spotsB, isCurved: true, color: const Color(0xFF8B3A3A), barWidth: 2, dotData: FlDotData(show: false)),
+                                  LineChartBarData(spots: spotsN, isCurved: true, color: const Color(0xFFFFFFFF), barWidth: 2, dotData: FlDotData(show: false)),
+                                ],
+                                borderData: FlBorderData(show: true, border: const Border(bottom: BorderSide(color: Colors.white24), left: BorderSide(color: Colors.white24))),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 40),
                   
