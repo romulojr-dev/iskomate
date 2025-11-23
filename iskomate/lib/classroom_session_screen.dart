@@ -2,12 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'package:firebase_database/firebase_database.dart'; // Required for Realtime DB
+import 'package:firebase_database/firebase_database.dart'; 
+import 'package:firebase_core/firebase_core.dart'; // Needed for Firebase.app()
 
 import 'theme.dart';
 import 'start_session.dart';
 
-// --- Colors (Kept the same) ---
+// --- Colors ---
 const Color _highlyEngagedColor = Color(0xFFB11212);
 const Color _barelyEngagedColor = Color(0xFF8B3A3A);
 const Color _engagedColor = Color(0xFFEBE0D2);
@@ -34,82 +35,30 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
   Duration _duration = Duration.zero;
   DateTime? _startTime;
   
-  // 💡 Reference to Realtime Database where Pi sends data
-  final DatabaseReference _aiRef = FirebaseDatabase.instance.ref('aiResult/engagement_stats');
-
-  // --- ADDED: cached percentage strings + numeric values + subscription
-  String _highlyPct = '0%';
-  String _barelyPct  = '0%';
-  String _engagedPct = '0%';
-  String _notPct     = '0%';
-  double _highlyVal = 0.0;
-  double _barelyVal = 0.0;
-  double _engagedVal = 0.0;
-  double _notVal = 0.0;
-  StreamSubscription<DatabaseEvent>? _aiSub;
+  // Stream to listen to the Realtime Database
+  late final Stream<DatabaseEvent> _statsStream;
 
   @override
   void initState() {
     super.initState();
     _setSystemUIOverlay();
     _startTimer();
-    _startTime = DateTime.now();
-
-    // ADDED: listen RTDB, update UI and Firestore (merge)
-    _aiSub = _aiRef.onValue.listen((DatabaseEvent event) {
-      final raw = event.snapshot.value;
-      debugPrint('RTDB event raw: $raw');
-      if (raw != null && raw is Map) {
-        double toDouble(dynamic v) {
-          if (v == null) return 0.0;
-          if (v is num) return v.toDouble();
-          return double.tryParse(v.toString()) ?? 0.0;
-        }
-
-        final he = toDouble(raw['highly_engaged']);
-        final be = toDouble(raw['barely_engaged']);
-        final e  = toDouble(raw['engaged']);
-        final ne = toDouble(raw['not_engaged']);
-
-        setState(() {
-          _highlyVal = he;
-          _barelyVal = be;
-          _engagedVal = e;
-          _notVal = ne;
-          _highlyPct = '${he.round()}%';
-          _barelyPct = '${be.round()}%';
-          _engagedPct = '${e.round()}%';
-          _notPct = '${ne.round()}%';
-        });
-
-        // write engagement snapshot into the session document (merge so it doesn't overwrite other fields)
-        FirebaseFirestore.instance
-            .collection('sessions')
-            .doc(widget.sessionId)
-            .set({
-              'engagement': {
-                'highly_engaged': he,
-                'barely_engaged': be,
-                'engaged': e,
-                'not_engaged': ne,
-              },
-              'last_update': DateTime.now().toIso8601String(),
-              'status': 'ongoing',
-            }, SetOptions(merge: true)).catchError((err) {
-              debugPrint('Firestore write error: $err');
-            });
-      } else {
-        debugPrint('RTDB payload null or not a Map');
-      }
-    }, onError: (err) {
-      debugPrint('RTDB listen error: $err');
-    });
+    _startTime = DateTime.now(); 
+    
+    // 💡 CRITICAL FIX: Connect specifically to your Asia-Southeast1 Database
+    // This bypasses the "default" US region and forces it to look in Singapore
+    final database = FirebaseDatabase.instanceFor(
+      app: Firebase.app(), 
+      databaseURL: 'https://iskomate-f149c-default-rtdb.asia-southeast1.firebasedatabase.app/'
+    );
+    
+    // Create the reference and the stream ONCE
+    _statsStream = database.ref('aiResult/engagement_stats').onValue;
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _aiSub?.cancel(); // ADDED
     super.dispose();
   }
   
@@ -145,30 +94,17 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
 
   void _handleTerminate() async {
     _timer?.cancel();
-
-    // compute formatted duration and save to Firestore along with final engagement snapshot
     final endTime = DateTime.now();
-    final duration = endTime.difference(_startTime ?? endTime);
-    String formattedDuration = [
-      duration.inHours.toString().padLeft(2, '0'),
-      (duration.inMinutes % 60).toString().padLeft(2, '0'),
-      (duration.inSeconds % 60).toString().padLeft(2, '0'),
-    ].join(':');
+    String formattedDuration = _formatDuration(_duration);
 
     await FirebaseFirestore.instance
         .collection('sessions')
         .doc(widget.sessionId)
-        .set({
+        .update({
           'status': 'ended',
           'duration': formattedDuration,
-          'engagement': {
-            'highly_engaged': _highlyVal,
-            'barely_engaged': _barelyVal,
-            'engaged': _engagedVal,
-            'not_engaged': _notVal,
-          },
           'ended_at': endTime.toIso8601String(),
-        }, SetOptions(merge: true));
+        });
 
     if (!mounted) return;
 
@@ -179,7 +115,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  // --- Widget for the individual percentage tile (Unchanged) ---
+  // --- Widget for Percentage Tile ---
   Widget _buildPercentageTile(BuildContext context, String percentage, Color color, Color textColor) {
     return Expanded(
       child: Container(
@@ -197,7 +133,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
             percentage,
             style: TextStyle(
               color: textColor,
-              fontSize: 60,
+              fontSize: 50, 
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -206,7 +142,7 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
     );
   }
 
-  // --- Widget for a single legend item (Unchanged) ---
+  // --- Widget for Legend Item ---
   Widget _buildLegendItem(Color color, String label, {bool hasBorder = false}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -288,8 +224,6 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: 40),
-                
-                // HEADER - show the session name passed from start screen
                 Text(
                   widget.sessionName,
                   textAlign: TextAlign.center,
@@ -302,23 +236,67 @@ class _ClassroomSessionScreenState extends State<ClassroomSessionScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // --- REAL-TIME DATA STREAM ---
-                // REPLACED StreamBuilder with cached values driven by listener
-                Column(
-                  children: [
-                    Row(
+                // 💡 STREAM BUILDER: Listens to your Asia DB
+                StreamBuilder<DatabaseEvent>(
+                  stream: _statsStream, 
+                  builder: (context, snapshot) {
+                    
+                    String highlyText = "0%";
+                    String barelyText = "0%";
+                    String engagedText = "0%";
+                    String notText = "0%";
+
+                    // Print error if connection fails
+                    if (snapshot.hasError) {
+                       debugPrint("❌ STREAM ERROR: ${snapshot.error}");
+                    }
+
+                    // If data exists, parse it
+                    if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
+                      try {
+                        // Debug log to confirm data arrival in Terminal
+                        final rawValue = snapshot.data!.snapshot.value;
+                        debugPrint("✅ DATA ARRIVED: $rawValue");
+
+                        final data = Map<dynamic, dynamic>.from(rawValue as Map);
+                        
+                        // Robust Number Parsing Helper
+                        double getVal(dynamic val) {
+                           if (val == null) return 0.0;
+                           if (val is int) return val.toDouble();
+                           if (val is double) return val;
+                           return double.tryParse(val.toString()) ?? 0.0;
+                        }
+
+                        highlyText = "${getVal(data['highly_engaged']).round()}%";
+                        barelyText = "${getVal(data['barely_engaged']).round()}%";
+                        engagedText = "${getVal(data['engaged']).round()}%";
+                        notText = "${getVal(data['not_engaged']).round()}%";
+
+                      } catch (e) {
+                        debugPrint("❌ PARSING ERROR: $e");
+                      }
+                    } else {
+                        debugPrint("⚠️ WAITING FOR DATA...");
+                    }
+
+                    return Column(
                       children: [
-                        _buildPercentageTile(context, _highlyPct, _highlyEngagedColor, Colors.white),
-                        _buildPercentageTile(context, _barelyPct, _barelyEngagedColor, Colors.white),
+                        Row(
+                          children: [
+                            _buildPercentageTile(context, highlyText, _highlyEngagedColor, Colors.white),
+                            _buildPercentageTile(context, barelyText, _barelyEngagedColor, Colors.white),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            _buildPercentageTile(context, engagedText, _engagedColor, _darkTextColor),
+                            _buildPercentageTile(context, notText, _notEngagedColor, _darkTextColor),
+                          ],
+                        ),
                       ],
-                    ),
-                    Row(
-                      children: [
-                        _buildPercentageTile(context, _engagedPct, _engagedColor, _darkTextColor),
-                        _buildPercentageTile(context, _notPct, _notEngagedColor, _darkTextColor),
-                      ],
-                    ),
-                  ],
+                    );
+                  },
                 ),
                 // --- END STREAM ---
 
